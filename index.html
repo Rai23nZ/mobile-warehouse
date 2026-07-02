@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивная проверка склада</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        .material-icons.md-24 { font-size: 24px; }
+        .material-icons.md-20 { font-size: 20px; }
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /*
+         * КОМПАКТНЫЙ РЕЖИМ ДЛЯ РАБОЧЕГО ЭКРАНА
+         * Цель: весь экран (≤3 зоны) без скролла на 6.9" телефоне.
+         * Логика: header=56px, main padding top+bottom=24px,
+         * итого под контент = viewport_h - 80px.
+         * Все отступы уплотнены через классы ниже — шрифты НЕ тронуты.
+         */
+
+        /* Карточка товара — внутренний padding */
+        .work-card-inner   { padding: 12px 16px; }
+
+        /* Строка badge (направление / пол) */
+        .work-badge-row    { padding: 6px 16px; }
+
+        /* Блок TM + категория */
+        .work-tm-block     { gap: 8px; }
+
+        /* Штрихкод-строка */
+        .work-barcode-row  { padding: 10px 14px; }
+
+        /* Наименование товара */
+        .work-name-block   { padding: 10px 14px; }
+
+        /* Панель план/факт */
+        .work-totals       { padding: 10px 16px; gap: 8px; }
+
+        /* Подпись над зонами */
+        .work-zones-label  { margin-bottom: 6px; }
+
+        /* Строка одной зоны */
+        .work-zone-row     { padding: 10px 14px; }
+
+        /* Панель навигации */
+        .work-nav-inner    { padding: 10px 14px; gap: 8px; }
+
+        /* Кнопки навигации */
+        .work-nav-btn      { padding: 10px 14px; }
+
+        /* Прогресс-блок */
+        .work-progress     { gap: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased select-none">
+
+    <!-- ШАПКА -->
+    <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50" style="padding: 10px 16px;">
+        <div class="max-w-md mx-auto flex justify-between items-center gap-3">
+
+            <!-- Название -->
+            <h1 class="text-base font-bold tracking-tight flex items-center gap-2 flex-shrink-0">
+                <i class="material-icons md-20">inventory_2</i>
+                Мобильная Проверка
+            </h1>
+
+            <!-- Кнопка сохранения сессии (дискета) — скрыта до начала проверки -->
+            <button id="btn-save-session"
+                onclick="saveSessionSnapshot()"
+                title="Сохранить прогресс на устройство"
+                class="hidden items-center gap-1.5 bg-indigo-500 hover:bg-indigo-400 active:scale-95 transition rounded-xl px-3 py-1.5 text-xs font-semibold">
+                <i class="material-icons md-20">save</i>
+                <span class="hidden sm:inline">Снимок</span>
+            </button>
+
+            <!-- Статус -->
+            <span class="text-xs bg-indigo-500 px-2.5 py-1 rounded-full font-medium whitespace-nowrap" id="status-badge">Ожидание</span>
+        </div>
+    </header>
+
+    <main class="flex-grow p-3 max-w-md mx-auto w-full">
+
+        <!-- ═══════════════════════════════════════════
+             ЭКРАН 1: ЗАГРУЗКА
+        ════════════════════════════════════════════ -->
+        <div id="screen-upload" class="space-y-4 fade-in">
+
+            <!-- Загрузить CSV-сессию (появляется если есть сохранённая сессия) -->
+            <div id="restore-banner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center gap-2 text-amber-800">
+                    <i class="material-icons md-24 text-amber-500 flex-shrink-0">history</i>
+                    <div>
+                        <div class="font-bold text-sm">Найден сохранённый прогресс</div>
+                        <div class="text-xs" id="restore-info">Сессия от ...</div>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="restoreSession()"
+                        class="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-amber-600 transition active:scale-[0.98]">
+                        Восстановить
+                    </button>
+                    <button onclick="clearSavedSession()"
+                        class="flex-1 bg-slate-100 text-slate-600 font-bold py-2.5 rounded-xl text-sm hover:bg-slate-200 transition active:scale-[0.98]">
+                        Начать заново
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h2 class="text-md font-semibold text-slate-900">Загрузка файла</h2>
+
+                <!-- CSV -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">CSV-файл инвентаризации</label>
+                    <input type="file" id="csv-file" accept=".csv"
+                        class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl p-1 bg-slate-50" />
+                </div>
+
+                <!-- JSON-снимок сессии -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Или загрузить снимок сессии (.json)</label>
+                    <input type="file" id="session-file" accept=".json"
+                        class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 border border-slate-200 rounded-xl p-1 bg-slate-50" />
+                </div>
+            </div>
+
+            <div id="loading-msg" class="hidden text-center text-sm font-semibold text-indigo-600 bg-indigo-50 p-3 rounded-xl animate-pulse">
+                Обработка данных...
+            </div>
+            <div id="error-card" class="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl hidden space-y-2">
+                <div class="font-bold flex items-center gap-2">
+                    <i class="material-icons md-24 text-red-500">warning</i>
+                    Ошибка импорта
+                </div>
+                <p id="error-text" class="text-xs font-mono leading-relaxed"></p>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════
+             ЭКРАН 2: ФИЛЬТРЫ
+        ════════════════════════════════════════════ -->
+        <div id="screen-filter" class="space-y-4 fade-in hidden">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-lg font-bold text-slate-900">Настройки маршрута</h2>
+                    <p class="text-xs text-slate-500">Выберите зону ответственности</p>
+                </div>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Направление</label>
+                        <select id="filter-napravlenie" class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Торговая Марка (ТМ)</label>
+                        <select id="filter-tm" class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Пол / Категория</label>
+                        <select id="filter-pol" class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></select>
+                    </div>
+                </div>
+                <button onclick="startVerification()"
+                    class="w-full bg-indigo-600 text-white font-bold py-4 px-4 rounded-xl hover:bg-indigo-700 transition active:scale-[0.98] shadow-md shadow-indigo-100 text-base">
+                    НАЧАТЬ ПРОВЕРКУ
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════
+             ЭКРАН 3: РАБОЧИЙ ЭКРАН
+             Вся верстка выстроена под 6.9" без скролла
+             при ≤3 зонах на товар.
+        ════════════════════════════════════════════ -->
+        <div id="screen-work" class="fade-in hidden flex flex-col" style="gap: 8px;">
+
+            <!-- Баннер второго круга (скрыт по умолчанию) -->
+            <div id="incomplete-banner" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl flex items-center gap-3" style="padding: 8px 14px;">
+                <i class="material-icons md-20 text-amber-500 flex-shrink-0">loop</i>
+                <div class="text-xs">
+                    <span class="font-bold">Второй круг · </span>
+                    <span id="incomplete-banner-text">Незавершённые товары</span>
+                </div>
+            </div>
+
+            <!-- ── КАРТОЧКА ТОВАРА ── -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-shrink-0">
+
+                <!-- Строка: направление / пол -->
+                <div class="work-badge-row bg-slate-50 border-b border-slate-100 flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <span id="view-napr"></span>
+                    <span id="view-pol" class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-[10px]"></span>
+                </div>
+
+                <div class="work-card-inner space-y-2.5">
+
+                    <!-- TM + категория -->
+                    <div class="flex justify-between items-start work-tm-block">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">Бренд (ТМ)</span>
+                            <div id="view-tm-name" class="text-sm font-bold text-indigo-600 tracking-tight leading-tight"></div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">Категория</span>
+                            <div id="view-napr-sub" class="text-sm font-bold text-slate-700"></div>
+                        </div>
+                    </div>
+
+                    <!-- Штрихкод -->
+                    <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Штрихкод</span>
+                            <span id="view-tovar" class="text-base font-mono font-bold tracking-wider text-slate-900 leading-none"></span>
+                        </div>
+                        <button onclick="copyBarcode()" class="text-indigo-600 hover:text-indigo-800 p-2 bg-white rounded-lg shadow-sm border border-slate-100 active:scale-95 transition">
+                            <i class="material-icons md-20">content_copy</i>
+                        </button>
+                    </div>
+
+                    <!-- Наименование -->
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Наименование</span>
+                        <div id="view-name" class="work-name-block text-base font-extrabold text-slate-950 bg-amber-50 border border-amber-200 rounded-xl leading-snug"></div>
+                    </div>
+
+                    <!-- План / Факт -->
+                    <div id="totals-panel" class="work-totals grid grid-cols-2 rounded-xl bg-slate-100 border-2 border-transparent transition-all duration-300">
+                        <div class="text-center border-r border-slate-200">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase block">Должно быть</span>
+                            <span class="text-2xl font-black text-slate-900"><span id="count-plan">0</span> <span class="text-xs font-medium">шт</span></span>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase block">Подтверждено</span>
+                            <span class="text-2xl font-black text-slate-900"><span id="count-fact">0</span> <span class="text-xs font-medium">шт</span></span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ── ЗОНЫ ── -->
+            <div class="flex-shrink-0">
+                <span class="work-zones-label text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">Участки сканирования</span>
+                <div id="zones-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+            </div>
+
+            <!-- ── НАВИГАЦИЯ + ЭКСПОРТ ── -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0">
+                <div class="work-nav-inner flex flex-col">
+
+                    <!-- Кнопки навигации -->
+                    <div class="flex gap-2">
+                        <button onclick="prevProduct()"
+                            class="work-nav-btn flex-1 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
+                            <i class="material-icons md-20">arrow_back_ios</i>
+                            Назад
+                        </button>
+                        <button onclick="nextProductManual()"
+                            class="work-nav-btn flex-1 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
+                            Вперёд
+                            <i class="material-icons md-20">arrow_forward_ios</i>
+                        </button>
+                    </div>
+
+                    <!-- Экспорт расхождений -->
+                    <button onclick="exportDiscrepancies()"
+                        class="w-full bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2 text-sm"
+                        style="padding: 8px 14px;">
+                        <i class="material-icons md-20">download</i>
+                        Экспорт расхождений (.csv)
+                    </button>
+
+                    <!-- Прогресс -->
+                    <div class="work-progress flex flex-col">
+                        <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
+                            <span>Прогресс</span>
+                            <span id="progress-text">0 из 0</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div id="progress-bar" class="bg-indigo-600 h-full transition-all duration-300" style="width:0%"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-400">
+                            <span>Завершено</span>
+                            <span id="completed-count">0 из 0</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div><!-- /screen-work -->
+    </main>
+
+    <!-- МОДАЛКА: РАСХОЖДЕНИЕ -->
+    <div id="discrepancyModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in">
+            <h3 class="text-lg font-bold text-slate-900 mb-1">Не подтверждено</h3>
+            <p id="modalProductName" class="text-sm text-slate-500 mb-4"></p>
+            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Причина</label>
+            <textarea id="discrepancyReason" rows="3"
+                class="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 bg-slate-50 mb-4"
+                placeholder="Например: пустая полка..."></textarea>
+            <div class="flex gap-3">
+                <button onclick="closeModal()" class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Отмена</button>
+                <button onclick="saveDiscrepancy()" class="flex-1 py-3 px-4 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-600 transition">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛКА: ВСЁ ГОТОВО -->
+    <div id="allDoneModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in text-center">
+            <div class="text-5xl mb-3">🎉</div>
+            <h3 class="text-xl font-bold text-slate-900 mb-2">Проверка завершена!</h3>
+            <p id="allDoneText" class="text-sm text-slate-500 mb-5"></p>
+            <div class="flex gap-3">
+                <button onclick="closeAllDoneModal()" class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Остаться</button>
+                <button onclick="exportDiscrepancies(); closeAllDoneModal()" class="flex-1 py-3 px-4 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition">Скачать отчёт</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-semibold transition-all duration-300 translate-y-20 opacity-0 z-50 flex items-center gap-2 max-w-sm w-[90%] justify-center">
+        <span id="toast-text"></span>
+    </div>
+
+    <footer class="bg-slate-100 border-t border-slate-200 py-2 text-center text-[10px] text-slate-400">
+        Полностью автономно · Офлайн
+    </footer>
+
+    <script>
+    (function () {
+
+        // ─── Константы localStorage ─────────────────────────────────────────
+        const LS_KEY      = 'wh_session_v1';      // авто-сохранение прогресса
+        const LS_META_KEY = 'wh_session_meta_v1'; // дата/время последнего сохранения
+
+        // ─── Состояние ──────────────────────────────────────────────────────
+        let rawProducts         = [];
+        let filteredProducts    = [];
+        let initialFilteredList = [];
+        let currentIndex        = 0;
+        let currentZoneIndex    = null;
+        let autoAdvanceTimer    = null;
+
+        // ─── Инициализация ──────────────────────────────────────────────────
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('csv-file').addEventListener('change', handleCsvSelect);
+            document.getElementById('session-file').addEventListener('change', handleSessionFileSelect);
+            checkRestorable();
+        });
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: СОХРАНЕНИЕ / ВОССТАНОВЛЕНИЕ СЕССИИ
+        // ════════════════════════════════════════════════════════════════════
+
+        // --- Авто-сохранение в localStorage (вызывается при каждом изменении зоны)
+        function autoSave() {
+            try {
+                const payload = {
+                    rawProducts,
+                    filteredProducts,
+                    initialFilteredList,
+                    currentIndex,
+                    ts: Date.now()
+                };
+                localStorage.setItem(LS_KEY, JSON.stringify(payload));
+                localStorage.setItem(LS_META_KEY, new Date().toISOString());
+            } catch (e) {
+                // Если localStorage переполнен — тихо игнорируем (не прерываем работу)
+                console.warn('autoSave failed:', e);
+            }
+        }
+
+        // --- Проверяем при загрузке: есть ли что восстанавливать?
+        function checkRestorable() {
+            try {
+                const raw = localStorage.getItem(LS_KEY);
+                if (!raw) return;
+                const meta = localStorage.getItem(LS_META_KEY);
+                const dt   = meta ? new Date(meta).toLocaleString('ru-RU') : 'неизвестно';
+                document.getElementById('restore-info').textContent = `Сохранено: ${dt}`;
+                document.getElementById('restore-banner').classList.remove('hidden');
+            } catch (e) { /* ignore */ }
+        }
+
+        // --- Восстановить сессию из localStorage
+        window.restoreSession = function () {
+            try {
+                const raw     = localStorage.getItem(LS_KEY);
+                if (!raw) return showToast('Нет данных для восстановления');
+                const payload = JSON.parse(raw);
+
+                rawProducts         = payload.rawProducts         || [];
+                filteredProducts    = payload.filteredProducts    || [];
+                initialFilteredList = payload.initialFilteredList || [];
+                currentIndex        = payload.currentIndex        || 0;
+
+                document.getElementById('restore-banner').classList.add('hidden');
+                goToWorkScreen();
+                showToast('✅ Сессия восстановлена', 2500);
+            } catch (e) {
+                showToast('Ошибка восстановления: ' + e.message);
+            }
+        };
+
+        // --- Сбросить сохранённую сессию
+        window.clearSavedSession = function () {
+            localStorage.removeItem(LS_KEY);
+            localStorage.removeItem(LS_META_KEY);
+            document.getElementById('restore-banner').classList.add('hidden');
+            showToast('Сохранённый прогресс удалён');
+        };
+
+        // --- Скачать JSON-снимок (кнопка-дискета в шапке)
+        window.saveSessionSnapshot = function () {
+            if (!rawProducts.length) { showToast('Нет данных для сохранения'); return; }
+            try {
+                const payload = {
+                    version: 1,
+                    savedAt: new Date().toISOString(),
+                    rawProducts,
+                    filteredProducts,
+                    initialFilteredList,
+                    currentIndex
+                };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement('a');
+                a.href     = url;
+                a.download = `wh_session_${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('💾 Снимок сессии сохранён', 2500);
+            } catch (e) {
+                showToast('Ошибка сохранения: ' + e.message);
+            }
+        };
+
+        // --- Загрузить JSON-снимок из файла
+        async function handleSessionFileSelect(e) {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                const text    = await file.text();
+                const payload = JSON.parse(text);
+                if (!payload.rawProducts) throw new Error('Неверный формат файла сессии');
+
+                rawProducts         = payload.rawProducts         || [];
+                filteredProducts    = payload.filteredProducts    || [];
+                initialFilteredList = payload.initialFilteredList || [];
+                currentIndex        = payload.currentIndex        || 0;
+
+                const savedAt = payload.savedAt
+                    ? new Date(payload.savedAt).toLocaleString('ru-RU')
+                    : 'неизвестно';
+
+                autoSave(); // кладём восстановленное обратно в localStorage
+                goToWorkScreen();
+                showToast(`✅ Сессия от ${savedAt}`, 3000);
+            } catch (err) {
+                triggerError('Ошибка загрузки снимка: ' + err.message);
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: ЗАГРУЗКА CSV
+        // ════════════════════════════════════════════════════════════════════
+
+        async function handleCsvSelect(e) {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            document.getElementById('loading-msg').classList.remove('hidden');
+            document.getElementById('error-card').classList.add('hidden');
+            try {
+                const text = await file.text();
+                runParsing(text);
+            } catch (err) {
+                triggerError(err.message);
+            }
+        }
+
+        function runParsing(text) {
+            const lines = text.split('\n').filter(l => l.trim());
+            if (!lines.length) return triggerError('Файл пуст');
+
+            const delimiter = lines[0].includes(';') ? ';' : (lines[0].includes('\t') ? '\t' : ',');
+            const headers   = parseCsvLine(lines[0], delimiter);
+            const idx = {
+                tovar: findHeaderIndex(headers, ['товар', 'штрихкод']),
+                name:  findHeaderIndex(headers, ['наименование', 'название']),
+                tm:    findHeaderIndex(headers, ['тм', 'бренд', 'марка']),
+                uch:   findHeaderIndex(headers, ['уч. скан.', 'участок']),
+                kol:   findHeaderIndex(headers, ['кол-во', 'количество']),
+                napr:  findHeaderIndex(headers, ['направление', 'категория']),
+                pol:   findHeaderIndex(headers, ['пол', 'гендер'])
+            };
+
+            if (idx.tovar === -1) return triggerError('Не найден столбец "Товар"');
+
+            const dataMap = {};
+            for (const line of lines.slice(1)) {
+                const cells   = parseCsvLine(line, delimiter);
+                const barcode = cleanValue(cells[idx.tovar]);
+                if (!barcode) continue;
+
+                if (!(barcode in dataMap)) {
+                    dataMap[barcode] = {
+                        tovar: barcode,
+                        name:  cleanValue(cells[idx.name]),
+                        tm:    cleanValue(cells[idx.tm]),
+                        napr:  cleanValue(cells[idx.napr]),
+                        pol:   cleanValue(cells[idx.pol]),
+                        ost_plan: 0,
+                        zones: []
+                    };
+                }
+
+                const zoneNumber = cleanValue(cells[idx.uch]);
+                const quantity   = parseInt(cleanValue(cells[idx.kol]));
+                if (zoneNumber && !isNaN(quantity) && quantity > 0) {
+                    const existing = dataMap[barcode].zones.find(z => z.uch === zoneNumber);
+                    if (existing) {
+                        existing.kol += quantity;
+                    } else {
+                        dataMap[barcode].zones.push({
+                            uch: zoneNumber, kol: quantity,
+                            checked: false, status: 'waiting', comment: ''
+                        });
+                        dataMap[barcode].ost_plan += quantity;
+                    }
+                }
+            }
+
+            rawProducts = Object.values(dataMap).map(p => {
+                p.zones.sort((a, b) => parseInt(a.uch) - parseInt(b.uch));
+                return p;
+            });
+
+            document.getElementById('loading-msg').classList.add('hidden');
+            document.getElementById('screen-upload').classList.add('hidden');
+            document.getElementById('screen-filter').classList.remove('hidden');
+            document.getElementById('status-badge').textContent = 'Данные готовы';
+            populateFilters();
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: ФИЛЬТРЫ
+        // ════════════════════════════════════════════════════════════════════
+
+        function populateFilters() {
+            const selNapr = document.getElementById('filter-napravlenie');
+            const selTm   = document.getElementById('filter-tm');
+            const selPol  = document.getElementById('filter-pol');
+
+            function rebuild() {
+                const napr = selNapr.value, tm = selTm.value, pol = selPol.value;
+                const filtered = rawProducts.filter(p =>
+                    (!napr || p.napr === napr) && (!tm || p.tm === tm) && (!pol || p.pol === pol)
+                );
+                const sets = { napr: new Set(), tm: new Set(), pol: new Set() };
+                filtered.forEach(p => { sets.napr.add(p.napr); sets.tm.add(p.tm); sets.pol.add(p.pol); });
+                refreshSelect(selNapr, sets.napr, napr);
+                refreshSelect(selTm,   sets.tm,   tm);
+                refreshSelect(selPol,  sets.pol,  pol);
+            }
+
+            function refreshSelect(el, values, cur) {
+                const prev = el.value;
+                el.innerHTML = '<option value="">-- Все позиции --</option>';
+                [...values].sort().forEach(v => {
+                    if (!v) return;
+                    const opt = document.createElement('option');
+                    opt.value = opt.textContent = v;
+                    el.appendChild(opt);
+                });
+                if ([...values].includes(prev)) el.value = prev;
+            }
+
+            const allN = new Set(), allT = new Set(), allP = new Set();
+            rawProducts.forEach(p => { allN.add(p.napr); allT.add(p.tm); allP.add(p.pol); });
+            refreshSelect(selNapr, allN, '');
+            refreshSelect(selTm,   allT, '');
+            refreshSelect(selPol,  allP, '');
+
+            selNapr.addEventListener('change', rebuild);
+            selTm.addEventListener('change', rebuild);
+            selPol.addEventListener('change', rebuild);
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: СТАРТ ПРОВЕРКИ
+        // ════════════════════════════════════════════════════════════════════
+
+        window.startVerification = function () {
+            const filters = {
+                napr: document.getElementById('filter-napravlenie').value,
+                tm:   document.getElementById('filter-tm').value,
+                pol:  document.getElementById('filter-pol').value
+            };
+
+            let mainList = rawProducts.filter(p =>
+                (!filters.napr || p.napr === filters.napr) &&
+                (!filters.tm   || p.tm   === filters.tm)   &&
+                (!filters.pol  || p.pol  === filters.pol)
+            );
+
+            if (!mainList.length) { showToast('Нет товаров по этому фильтру!'); return; }
+
+            mainList.sort((a, b) => {
+                const az = parseInt(a.zones[0]?.uch ?? '999999');
+                const bz = parseInt(b.zones[0]?.uch ?? '999999');
+                return az !== bz ? az - bz : a.tovar.localeCompare(b.tovar, undefined, { numeric: true });
+            });
+
+            initialFilteredList = [...mainList];
+            filteredProducts    = mainList;
+            currentIndex        = 0;
+
+            autoSave();
+            goToWorkScreen();
+        };
+
+        function goToWorkScreen() {
+            document.getElementById('screen-upload').classList.add('hidden');
+            document.getElementById('screen-filter').classList.add('hidden');
+            document.getElementById('screen-work').classList.remove('hidden');
+            document.getElementById('status-badge').textContent = 'Проверка';
+            document.getElementById('btn-save-session').classList.remove('hidden');
+            document.getElementById('btn-save-session').classList.add('flex');
+            renderProduct();
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: РЕНДЕР КАРТОЧКИ
+        // ════════════════════════════════════════════════════════════════════
+
+        function renderProduct() {
+            const p = filteredProducts[currentIndex];
+
+            // Баннер второго круга
+            const isSecondRound = filteredProducts.length < initialFilteredList.length;
+            const banner = document.getElementById('incomplete-banner');
+            if (isSecondRound) {
+                banner.classList.remove('hidden');
+                document.getElementById('incomplete-banner-text').textContent =
+                    `Незавершённых: ${filteredProducts.length} из ${initialFilteredList.length}`;
+            } else {
+                banner.classList.add('hidden');
+            }
+
+            // Поля через textContent — XSS безопасно
+            document.getElementById('view-napr').textContent     = p.napr;
+            document.getElementById('view-pol').textContent      = p.pol;
+            document.getElementById('view-tm-name').textContent  = p.tm;
+            document.getElementById('view-napr-sub').textContent = p.napr;
+            document.getElementById('view-tovar').textContent    = p.tovar;
+            document.getElementById('view-name').textContent     = p.name;
+            document.getElementById('count-plan').textContent    = p.ost_plan;
+
+            // Зоны — DOM-безопасное создание
+            const container = document.getElementById('zones-list');
+            container.innerHTML = '';
+
+            p.zones.forEach((z, i) => {
+                const row = document.createElement('div');
+                let bc = 'border-slate-200';
+                if (z.status === 'confirmed')    bc = 'border-emerald-500 bg-emerald-50/50';
+                if (z.status === 'not_confirmed') bc = 'border-rose-500 bg-rose-50';
+                row.className = `work-zone-row zone-item flex items-center justify-between border-2 rounded-xl transition ${bc}`;
+
+                const left   = document.createElement('div');
+                left.className = 'text-sm text-slate-700';
+                left.textContent = 'Участок: ';
+                const strong = document.createElement('strong');
+                strong.textContent = z.uch;
+                left.appendChild(strong);
+
+                const right  = document.createElement('div');
+                right.className = 'flex gap-2';
+
+                const btnCheck = document.createElement('button');
+                btnCheck.className = `px-3 py-2 rounded-xl font-bold text-xs ${z.checked ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`;
+                btnCheck.textContent = z.checked ? `✓ ${z.kol}` : `Ожидает (${z.kol})`;
+                btnCheck.addEventListener('click', () => toggleZone(i));
+
+                const btnReject = document.createElement('button');
+                btnReject.className = 'p-1.5 text-rose-500';
+                const icon = document.createElement('i');
+                icon.className = 'material-icons md-20';
+                icon.textContent = 'cancel';
+                btnReject.appendChild(icon);
+                btnReject.addEventListener('click', () => openDiscrepancyModal(i));
+
+                right.appendChild(btnCheck);
+                right.appendChild(btnReject);
+                row.appendChild(left);
+                row.appendChild(right);
+                container.appendChild(row);
+            });
+
+            updateTotals();
+            updateProgress();
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: ЛОГИКА ПРОВЕРКИ
+        // ════════════════════════════════════════════════════════════════════
+
+        window.toggleZone = function (i) {
+            const z = filteredProducts[currentIndex].zones[i];
+            z.checked = !z.checked;
+            z.status  = z.checked ? 'confirmed' : 'waiting';
+            if (!z.checked) z.comment = '';
+            autoSave(); // ← сохраняем при каждом изменении
+            renderProduct();
+        };
+
+        function updateTotals() {
+            const p    = filteredProducts[currentIndex];
+            const fact = p.zones.reduce((s, z) => s + (z.checked ? z.kol : 0), 0);
+            document.getElementById('count-fact').textContent = fact;
+
+            const allDone = p.zones.every(z => z.status !== 'waiting');
+            const isMatch = fact === p.ost_plan && p.ost_plan > 0;
+            const panel   = document.getElementById('totals-panel');
+
+            if (isMatch && allDone) {
+                panel.className = 'work-totals grid grid-cols-2 rounded-xl bg-emerald-50 border-2 border-emerald-500 text-emerald-900 transition-all duration-300';
+                if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+                const idxSnap = currentIndex;
+                autoAdvanceTimer = setTimeout(() => {
+                    autoAdvanceTimer = null;
+                    if (currentIndex === idxSnap) autoNextProduct();
+                }, 700);
+            } else {
+                panel.className = 'work-totals grid grid-cols-2 rounded-xl bg-slate-100 border-2 border-transparent transition-all duration-300';
+            }
+        }
+
+        function updateProgress() {
+            const total     = filteredProducts.length;
+            const completed = filteredProducts.filter(isProductDone).length;
+            document.getElementById('progress-text').textContent   = `${currentIndex + 1} из ${total}`;
+            document.getElementById('completed-count').textContent = `${completed} из ${total}`;
+            document.getElementById('progress-bar').style.width    = `${Math.round((completed / total) * 100)}%`;
+        }
+
+        function isProductDone(p) {
+            return p.zones.length > 0 && p.zones.every(z => z.status !== 'waiting');
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: АВТО-ПЕРЕХОД (умный следующий)
+        // ════════════════════════════════════════════════════════════════════
+
+        function autoNextProduct() {
+            const nextIdx = findNextIncomplete(currentIndex + 1);
+
+            if (nextIdx !== -1) {
+                currentIndex = nextIdx;
+                renderProduct();
+                return;
+            }
+
+            const allIncomplete = filteredProducts.filter(p => !isProductDone(p));
+
+            if (allIncomplete.length === 0) {
+                showAllDoneModal();
+                return;
+            }
+
+            // Второй круг — только незавершённые в исходном порядке
+            const incSet    = new Set(allIncomplete.map(p => p.tovar));
+            filteredProducts = initialFilteredList.filter(p => incSet.has(p.tovar));
+            currentIndex     = 0;
+            autoSave();
+            showToast(`↩ Второй круг: ${filteredProducts.length} товаров`, 3000);
+            renderProduct();
+        }
+
+        function findNextIncomplete(from) {
+            for (let i = from; i < filteredProducts.length; i++) {
+                if (!isProductDone(filteredProducts[i])) return i;
+            }
+            return -1;
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: РУЧНАЯ НАВИГАЦИЯ
+        // ════════════════════════════════════════════════════════════════════
+
+        window.nextProductManual = function () {
+            if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
+            if (currentIndex < filteredProducts.length - 1) {
+                currentIndex++;
+            } else {
+                currentIndex = 0;
+                showToast('🔄 Начало списка', 2000);
+            }
+            renderProduct();
+        };
+
+        window.prevProduct = function () {
+            if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderProduct();
+            } else {
+                showToast('⛔ Это начало списка', 2000);
+            }
+        };
+
+        // ════════════════════════════════════════════════════════════════════
+        //  БЛОК: МОДАЛКИ И УТИЛИТЫ
+        // ════════════════════════════════════════════════════════════════════
+
+        window.copyBarcode = function () {
+            const b = document.getElementById('view-tovar').textContent;
+            if (!b) return;
+            navigator.clipboard.writeText(b)
+                .then(() => showToast('📋 Скопировано'))
+                .catch(() => showToast('Не удалось скопировать'));
+        };
+
+        window.openDiscrepancyModal = function (i) {
+            currentZoneIndex = i;
+            document.getElementById('modalProductName').textContent = filteredProducts[currentIndex].name;
+            document.getElementById('discrepancyReason').value = '';
+            document.getElementById('discrepancyModal').style.display = 'flex';
+        };
+
+        window.closeModal = function () {
+            document.getElementById('discrepancyModal').style.display = 'none';
+        };
+
+        window.saveDiscrepancy = function () {
+            const reason = document.getElementById('discrepancyReason').value.trim();
+            const z = filteredProducts[currentIndex].zones[currentZoneIndex];
+            z.status  = 'not_confirmed';
+            z.comment = reason || 'Без комментария';
+            z.checked = true;
+            closeModal();
+            autoSave();
+            renderProduct();
+        };
+
+        function showAllDoneModal() {
+            const total      = initialFilteredList.length;
+            const withIssues = initialFilteredList.filter(p =>
+                p.zones.some(z => z.status === 'not_confirmed')
+            ).length;
+            document.getElementById('allDoneText').textContent =
+                `Всего: ${total}. Без замечаний: ${total - withIssues}. С расхождениями: ${withIssues}.`;
+            document.getElementById('allDoneModal').style.display = 'flex';
+        }
+
+        window.closeAllDoneModal = function () {
+            document.getElementById('allDoneModal').style.display = 'none';
+        };
+
+        window.exportDiscrepancies = function () {
+            let csv = '\uFEFFТовар;Наименование;ТМ;Направление;Пол;Участок;Кол-во план;Причина\n';
+            let cnt = 0;
+            rawProducts.forEach(p => {
+                p.zones.forEach(z => {
+                    if (z.status === 'not_confirmed') {
+                        const e = s => String(s || '').replace(/;/g, ',');
+                        csv += [e(p.tovar), e(p.name), e(p.tm), e(p.napr),
+                                e(p.pol), e(z.uch), z.kol, e(z.comment)].join(';') + '\n';
+                        cnt++;
+                    }
+                });
+            });
+            if (cnt === 0) { showToast('❌ Нет расхождений для экспорта'); return; }
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href = url; a.download = `errors_${Date.now()}.csv`;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a); URL.revokeObjectURL(url);
+            showToast(`✅ Экспорт: ${cnt} расхождений`);
+        };
+
+        function showToast(text, duration = 2500) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-text').textContent = text;
+            t.classList.remove('translate-y-20', 'opacity-0');
+            t.classList.add('translate-y-0', 'opacity-100');
+            setTimeout(() => {
+                t.classList.remove('translate-y-0', 'opacity-100');
+                t.classList.add('translate-y-20', 'opacity-0');
+            }, duration);
+        }
+
+        function triggerError(m) {
+            document.getElementById('error-text').textContent = m;
+            document.getElementById('error-card').classList.remove('hidden');
+            document.getElementById('loading-msg').classList.add('hidden');
+        }
+
+        function parseCsvLine(line, delimiter) {
+            const result = []; let field = '', quoteMode = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"' && quoteMode && line[i + 1] === '"') { field += '"'; i++; }
+                else if (ch === '"') { quoteMode = !quoteMode; }
+                else if (ch === delimiter && !quoteMode) { result.push(field.trim()); field = ''; }
+                else { field += ch; }
+            }
+            result.push(field.trim());
+            return result;
+        }
+
+        function cleanValue(v) {
+            return v ? v.trim().replace(/^["']|["']$/g, '').replace(/""/g, '"') : '';
+        }
+
+        function findHeaderIndex(arr, keywords) {
+            return arr.findIndex(h => keywords.some(k => h.toLowerCase().includes(k)));
+        }
+
+    })();
+    </script>
+
+</body>
+</html>
