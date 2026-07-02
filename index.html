@@ -86,11 +86,33 @@
     </header>
 
     <main class="flex-grow p-3 max-w-md mx-auto w-full">
-
+        
+       <!-- Добавление экрана авторизации в HTML -->
+        <div id="screen-auth" class="space-y-4 fade-in">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 text-center">
+                <div class="inline-flex p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-2">
+                    <i class="material-icons md-24">lock</i>
+                </div>
+                <h2 class="text-lg font-bold text-slate-900">Доступ ограничен</h2>
+                <p class="text-xs text-slate-500">Для работы с системой мобильной проверки введите пароль доступа</p>
+                
+                <div class="space-y-2 text-left">
+                    <input type="password" id="auth-password" placeholder="Введите пароль"
+                        class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium text-center tracking-widest" />
+                </div>
+                
+                <button onclick="checkAuth()"
+                    class="w-full bg-indigo-600 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-indigo-700 transition active:scale-[0.98] shadow-md shadow-indigo-100 text-sm">
+                    ВОЙТИ В СИСТЕМУ
+                </button>
+                <p id="auth-error" class="text-xs text-rose-600 font-semibold hidden">Неверный пароль доступа!</p>
+            </div>
+        </div>
+        
         <!-- ═══════════════════════════════════════════
              ЭКРАН 1: ЗАГРУЗКА
         ════════════════════════════════════════════ -->
-        <div id="screen-upload" class="space-y-4 fade-in">
+        <div id="screen-upload" class="space-y-4 fade-in hidden">
 
             <!-- Загрузить CSV-сессию (появляется если есть сохранённая сессия) -->
             <div id="restore-banner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
@@ -337,7 +359,60 @@
 
     <script>
     (function () {
-
+        
+        // Хэш SHA-256 от вашего пароля. 
+        // Например, для слова "Склад2026" хэш будет таким, как ниже.
+        // Сгенерировать хэш для своего пароля можно на любом онлайн-ресурсе (SHA256 generator).
+        const AUTH_HASH = "bc694d68bf26c48972e3a63ecf5eb9c03713009bf0c2e39062a4d32049e75525"; 
+        
+        // Функция для хэширования строки через Web Crypto API (работает в Safari/Chrome на iOS)
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        window.checkAuth = async function() {
+            const input = document.getElementById('auth-password').value;
+            const errorEl = document.getElementById('auth-error');
+            
+            if (!input) return;
+            
+            const inputHash = await sha256(input);
+            
+            if (inputHash === AUTH_HASH) {
+                // Успешный вход
+                document.getElementById('screen-auth').classList.add('hidden');
+                
+                // Проверяем, есть ли сохраненная сессия. Если нет — показываем экран загрузки CSV
+                if (localStorage.getItem('wh_session_v1')) {
+                    document.getElementById('restore-banner').classList.remove('hidden');
+                    document.getElementById('screen-upload').classList.remove('hidden');
+                } else {
+                    document.getElementById('screen-upload').classList.remove('hidden');
+                }
+                
+                // Сохраняем факт успешного входа в текущей сессии вкладки, чтобы не вводить пароль при перезагрузке
+                sessionStorage.setItem('wh_auth_passed', 'true');
+            } else {
+                errorEl.classList.remove('hidden');
+                document.getElementById('auth-password').value = '';
+            }
+        };
+        
+        // Проверка авторизации при инициализации страницы
+        window.addEventListener('DOMContentLoaded', () => {
+            if (sessionStorage.getItem('wh_auth_passed') === 'true') {
+                document.getElementById('screen-auth').classList.add('hidden');
+                document.getElementById('screen-upload').classList.remove('hidden');
+            }
+            // Привязка кнопки Enter к инпуту пароля
+            document.getElementById('auth-password')?.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') checkAuth();
+            });
+        });
+        
         // ─── Константы localStorage ─────────────────────────────────────────
         const LS_KEY      = 'wh_session_v1';      // авто-сохранение прогресса
         const LS_META_KEY = 'wh_session_meta_v1'; // дата/время последнего сохранения
