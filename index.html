@@ -365,7 +365,6 @@
         // Сгенерировать хэш для своего пароля можно на любом онлайн-ресурсе (SHA256 generator).
         const AUTH_HASH = "156a0510b488c25fa442b6442013c3e1b5738718aa0d2763b8265df9d00eb126"; 
         
-        // Функция для хэширования строки через Web Crypto API (работает в Safari/Chrome на iOS)
         async function sha256(message) {
             const msgBuffer = new TextEncoder().encode(message);
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -374,7 +373,8 @@
         }
         
         window.checkAuth = async function() {
-            const input = document.getElementById('auth-password').value;
+            // .trim() убирает случайные пробелы, которые ставит телефонная клавиатура
+            const input = document.getElementById('auth-password').value.trim();
             const errorEl = document.getElementById('auth-error');
             
             if (!input) return;
@@ -382,18 +382,13 @@
             const inputHash = await sha256(input);
             
             if (inputHash === AUTH_HASH) {
-                // Успешный вход
                 document.getElementById('screen-auth').classList.add('hidden');
-                
-                // Проверяем, есть ли сохраненная сессия. Если нет — показываем экран загрузки CSV
                 if (localStorage.getItem('wh_session_v1')) {
                     document.getElementById('restore-banner').classList.remove('hidden');
                     document.getElementById('screen-upload').classList.remove('hidden');
                 } else {
                     document.getElementById('screen-upload').classList.remove('hidden');
                 }
-                
-                // Сохраняем факт успешного входа в текущей сессии вкладки, чтобы не вводить пароль при перезагрузке
                 sessionStorage.setItem('wh_auth_passed', 'true');
             } else {
                 errorEl.classList.remove('hidden');
