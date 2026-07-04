@@ -592,8 +592,24 @@
             });
 
             initialFilteredList = [...mainList]; filteredProducts = mainList; currentIndex = 0;
-            autoSave(); goToWorkScreen();
+            autoSave(); goToWorkScreen(); preloadFilteredImages(mainList);
         };
+
+        function preloadFilteredImages(productsList) {
+            showToast('⏳ Оптимизация медиа...'); // Короткое уведомление для пользователя
+            
+            productsList.forEach(p => {
+                if (p.tovar) {
+                    // Создаем невидимый элемент изображения в памяти JavaScript
+                    const imgCache = new Image();
+                    imgCache.src = `img/${p.tovar}.jpg`;
+                    
+                    // Также принудительно кэшируем заглушку, чтобы она всегда была под рукой
+                    const emptyCache = new Image();
+                    emptyCache.src = 'img/empty.jpg';
+                }
+            });
+        }
 
         function goToWorkScreen() {
             document.getElementById('screen-upload').classList.add('hidden');
@@ -603,6 +619,7 @@
             document.getElementById('btn-save-session').classList.remove('hidden');
             document.getElementById('btn-save-session').classList.add('flex');
             renderProduct();
+            
         }
 
         // ИСПРАВЛЕННАЯ ФУНКЦИЯ РЕНДЕРА ТОВАРА
@@ -610,9 +627,15 @@
             const p = filteredProducts[currentIndex];
 
             // Обновление локальной картинки
+            // ИСПРАВЛЕННЫЙ ВАРЯНТ ОБНОВЛЕНИЯ КАРТИНКИ С ОБХОДОМ КЭША
             const imgEl = document.getElementById('view-image');
+            const VERSION = "04_07_2026"; // Меняйте эту строчку на ПК, когда обновляете базу картинок на GitHub
             if (imgEl && p.tovar) {
-                imgEl.src = `img/${p.tovar}.jpg`; 
+                // Добавляем к ссылке случайный или временной параметр ?v=...
+                // Date.now() генерирует уникальное число каждую миллисекунду.
+                // Это заставит Safari всегда делать реальный запрос на GitHub Pages, 
+                // и если вы удалили картинку — он сразу покажет empty.jpg
+                imgEl.src = `img/${p.tovar}.jpg?v=${VERSION}`;
             }
 
             // Накатываем баннер второго круга
