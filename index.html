@@ -32,6 +32,52 @@
         .work-nav-inner    { padding: 10px 14px; gap: 8px; }
         .work-nav-btn      { padding: 10px 14px; }
         .work-progress     { gap: 4px; }
+
+        /* ── ЭФФЕКТ УВЕЛИЧЕНИЯ КАРТИНКИ ── */
+        /* Полноэкранный контейнер-подложка */
+        .img-zoom-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(15, 23, 42, 0.85); /* Темный полупрозрачный фон */
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease-in-out;
+            backdrop-filter: blur(4px); /* Легкое размытие заднего плана для iOS */
+        }
+
+        /* Активное состояние подложки */
+        .img-zoom-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Картинка внутри модального режима */
+        .img-zoom-overlay img {
+            max-width: 90vw;
+            max-height: 85vh;
+            object-contain: contain;
+            border-radius: 16px;
+            transform: scale(0.9);
+            transition: transform 0.25s ease-in-out;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .img-zoom-overlay.active img {
+            transform: scale(1);
+        }
+
+        /* Курсор-указатель для кликабельной картинки на рабочем экране */
+        #view-image {
+            cursor: zoom-in;
+            transition: transform 0.2s ease;
+        }
+        #view-image:active {
+            transform: scale(0.96); /* Легкий отклик на нажатие */
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased select-none">
@@ -181,8 +227,9 @@
                     </div>
 
                     <div class="flex justify-center bg-white border border-slate-100 rounded-2xl p-2 shadow-sm">
-                        <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
-                             onerror="this.onerror=null; this.src='img/empty.jpg';">
+                            <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
+                                 onclick="toggleImageZoom(true)"
+                                 onerror="this.onerror=null; this.src='img/empty.jpg';">
                     </div>
 
                     <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
@@ -290,8 +337,14 @@
     </div>
 
     <footer class="bg-slate-100 border-t border-slate-200 py-2 text-center text-[10px] text-slate-400">
-        Полностью автономно · Офлайн
     </footer>
+    
+    <div id="imageZoomOverlay" class="img-zoom-overlay" onclick="toggleImageZoom(false)">
+        <img id="zoom-image-target" src="" alt="Увеличенное фото">
+        <div class="absolute top-5 right-5 text-white/70 bg-black/40 p-2 rounded-full backdrop-blur-sm">
+            <i class="material-icons md-24">fullscreen_exit</i>
+        </div>
+    </div>
 
     <script>
     (function () {
@@ -694,6 +747,29 @@
             navigator.clipboard.writeText(b)
                 .then(() => showToast('📋 Скопировано'))
                 .catch(() => showToast('Не удалось скопировать'));
+        };
+
+        // ─── Управление полноэкранным масштабированием картинки ───
+        window.toggleImageZoom = function (show) {
+            const overlay = document.getElementById('imageZoomOverlay');
+            const zoomImg = document.getElementById('zoom-image-target');
+            const currentImg = document.getElementById('view-image');
+            
+            if (!overlay || !zoomImg || !currentImg) return;
+            
+            if (show) {
+                // Копируем текущий источник картинки (включая empty.jpg, если сработал onerror)
+                zoomImg.src = currentImg.src;
+                // Активируем полноэкранный слой
+                overlay.classList.add('active');
+            } else {
+                // Плавно закрываем
+                overlay.classList.remove('active');
+                // Очищаем src после завершения анимации, чтобы при следующем открытии не моргало старое фото
+                setTimeout(() => {
+                    if (!overlay.classList.contains('active')) zoomImg.src = '';
+                }, 250);
+            }
         };
 
         window.openDiscrepancyModal = function (i) {
