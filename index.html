@@ -20,58 +20,28 @@
         /*
          * КОМПАКТНЫЙ РЕЖИМ ДЛЯ РАБОЧЕГО ЭКРАНА
          * Цель: весь экран (≤3 зоны) без скролла на 6.9" телефоне.
-         * Логика: header=56px, main padding top+bottom=24px,
-         * итого под контент = viewport_h - 80px.
-         * Все отступы уплотнены через классы ниже — шрифты НЕ тронуты.
          */
-
-        /* Карточка товара — внутренний padding */
         .work-card-inner   { padding: 12px 16px; }
-
-        /* Строка badge (направление / пол) */
         .work-badge-row    { padding: 6px 16px; }
-
-        /* Блок TM + категория */
         .work-tm-block     { gap: 8px; }
-
-        /* Штрихкод-строка */
         .work-barcode-row  { padding: 10px 14px; }
-
-        /* Наименование товара */
         .work-name-block   { padding: 10px 14px; }
-
-        /* Панель план/факт */
         .work-totals       { padding: 10px 16px; gap: 8px; }
-
-        /* Подпись над зонами */
         .work-zones-label  { margin-bottom: 6px; }
-
-        /* Строка одной зоны */
         .work-zone-row     { padding: 10px 14px; }
-
-        /* Панель навигации */
         .work-nav-inner    { padding: 10px 14px; gap: 8px; }
-
-        /* Кнопки навигации */
         .work-nav-btn      { padding: 10px 14px; }
-
-        /* Прогресс-блок */
         .work-progress     { gap: 4px; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased select-none">
 
-    <!-- ШАПКА -->
     <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50" style="padding: 10px 16px;">
         <div class="max-w-md mx-auto flex justify-between items-center gap-3">
-
-            <!-- Название -->
             <h1 class="text-base font-bold tracking-tight flex items-center gap-2 flex-shrink-0">
                 <i class="material-icons md-20">inventory_2</i>
                 Мобильная Проверка
             </h1>
-
-            <!-- Кнопка сохранения сессии (дискета) — скрыта до начала проверки -->
             <button id="btn-save-session"
                 onclick="saveSessionSnapshot()"
                 title="Сохранить прогресс на устройство"
@@ -79,15 +49,12 @@
                 <i class="material-icons md-20">save</i>
                 <span class="hidden sm:inline">Снимок</span>
             </button>
-
-            <!-- Статус -->
             <span class="text-xs bg-indigo-500 px-2.5 py-1 rounded-full font-medium whitespace-nowrap" id="status-badge">Ожидание</span>
         </div>
     </header>
 
     <main class="flex-grow p-3 max-w-md mx-auto w-full">
         
-       <!-- Добавление экрана авторизации в HTML -->
         <div id="screen-auth" class="space-y-4 fade-in">
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 text-center">
                 <div class="inline-flex p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-2">
@@ -109,12 +76,7 @@
             </div>
         </div>
         
-        <!-- ═══════════════════════════════════════════
-             ЭКРАН 1: ЗАГРУЗКА
-        ════════════════════════════════════════════ -->
         <div id="screen-upload" class="space-y-4 fade-in hidden">
-
-            <!-- Загрузить CSV-сессию (появляется если есть сохранённая сессия) -->
             <div id="restore-banner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
                 <div class="flex items-center gap-2 text-amber-800">
                     <i class="material-icons md-24 text-amber-500 flex-shrink-0">history</i>
@@ -137,15 +99,11 @@
 
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                 <h2 class="text-md font-semibold text-slate-900">Загрузка файла</h2>
-
-                <!-- CSV -->
                 <div class="space-y-2">
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">CSV-файл инвентаризации</label>
                     <input type="file" id="csv-file" accept=".csv"
                         class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl p-1 bg-slate-50" />
                 </div>
-
-                <!-- JSON-снимок сессии -->
                 <div class="space-y-2">
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Или загрузить снимок сессии (.json)</label>
                     <input type="file" id="session-file" accept=".json"
@@ -165,9 +123,6 @@
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════
-             ЭКРАН 2: ФИЛЬТРЫ
-        ════════════════════════════════════════════ -->
         <div id="screen-filter" class="space-y-4 fade-in hidden">
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                 <div class="border-b border-slate-100 pb-3">
@@ -195,14 +150,8 @@
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════
-             ЭКРАН 3: РАБОЧИЙ ЭКРАН
-             Вся верстка выстроена под 6.9" без скролла
-             при ≤3 зонах на товар.
-        ════════════════════════════════════════════ -->
         <div id="screen-work" class="fade-in hidden flex flex-col" style="gap: 8px;">
 
-            <!-- Баннер второго круга (скрыт по умолчанию) -->
             <div id="incomplete-banner" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl flex items-center gap-3" style="padding: 8px 14px;">
                 <i class="material-icons md-20 text-amber-500 flex-shrink-0">loop</i>
                 <div class="text-xs">
@@ -211,10 +160,8 @@
                 </div>
             </div>
 
-            <!-- ── КАРТОЧКА ТОВАРА ── -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-shrink-0">
 
-                <!-- Строка: направление / пол -->
                 <div class="work-badge-row bg-slate-50 border-b border-slate-100 flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
                     <span id="view-napr"></span>
                     <span id="view-pol" class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-[10px]"></span>
@@ -222,7 +169,6 @@
 
                 <div class="work-card-inner space-y-2.5">
 
-                    <!-- TM + категория -->
                     <div class="flex justify-between items-start work-tm-block">
                         <div>
                             <span class="text-[10px] font-bold text-slate-400 uppercase">Бренд (ТМ)</span>
@@ -234,18 +180,11 @@
                         </div>
                     </div>
 
-                    <!-- КАРТИНКА -->
-                    <div id="screen-main" class="space-y-3 hidden flex-1 flex flex-col justify-between">
-                        <div class="space-y-2">
-                            
-                            <div class="flex justify-center bg-white border border-slate-100 rounded-2xl p-2 shadow-sm">
-                                <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
-                                    onerror="this.onerror=null; this.src='img/empty.jpg';">
-                            </div>
+                    <div class="flex justify-center bg-white border border-slate-100 rounded-2xl p-2 shadow-sm">
+                        <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
+                             onerror="this.onerror=null; this.src='img/empty.jpg';">
+                    </div>
 
-                            <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 space-y-1 relative">
-
-                    <!-- Артикул -->
                     <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
                         <div>
                             <span class="text-[10px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Артикул</span>
@@ -256,13 +195,11 @@
                         </button>
                     </div>
 
-                    <!-- Наименование -->
                     <div>
                         <span class="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Наименование</span>
                         <div id="view-name" class="work-name-block text-base font-extrabold text-slate-950 bg-amber-50 border border-amber-200 rounded-xl leading-snug"></div>
                     </div>
 
-                    <!-- План / Факт -->
                     <div id="totals-panel" class="work-totals grid grid-cols-2 rounded-xl bg-slate-100 border-2 border-transparent transition-all duration-300">
                         <div class="text-center border-r border-slate-200">
                             <span class="text-[10px] font-bold text-slate-500 uppercase block">Должно быть</span>
@@ -277,17 +214,13 @@
                 </div>
             </div>
 
-            <!-- ── ЗОНЫ ── -->
             <div class="flex-shrink-0">
                 <span class="work-zones-label text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">Участки сканирования</span>
                 <div id="zones-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
             </div>
 
-            <!-- ── НАВИГАЦИЯ + ЭКСПОРТ ── -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0">
                 <div class="work-nav-inner flex flex-col">
-
-                    <!-- Кнопки навигации -->
                     <div class="flex gap-2">
                         <button onclick="prevProduct()"
                             class="work-nav-btn flex-1 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
@@ -301,7 +234,6 @@
                         </button>
                     </div>
 
-                    <!-- Экспорт расхождений -->
                     <button onclick="exportDiscrepancies()"
                         class="w-full bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2 text-sm"
                         style="padding: 8px 14px;">
@@ -309,7 +241,6 @@
                         Экспорт расхождений (.csv)
                     </button>
 
-                    <!-- Прогресс -->
                     <div class="work-progress flex flex-col">
                         <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
                             <span>Прогресс</span>
@@ -323,22 +254,18 @@
                             <span id="completed-count">0 из 0</span>
                         </div>
                     </div>
-
                 </div>
             </div>
 
-        </div><!-- /screen-work -->
+        </div>
     </main>
 
-    <!-- МОДАЛКА: РАСХОЖДЕНИЕ -->
     <div id="discrepancyModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
         <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in">
             <h3 class="text-lg font-bold text-slate-900 mb-1">Не подтверждено</h3>
             <p id="modalProductName" class="text-sm text-slate-500 mb-4"></p>
             <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Причина</label>
-            <textarea id="discrepancyReason" rows="3"
-                class="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 bg-slate-50 mb-4"
-                placeholder="Например: пустая полка..."></textarea>
+            <textarea id="discrepancyReason" rows="3" class="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 bg-slate-50 mb-4" placeholder="Например: пустая полка..."></textarea>
             <div class="flex gap-3">
                 <button onclick="closeModal()" class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Отмена</button>
                 <button onclick="saveDiscrepancy()" class="flex-1 py-3 px-4 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-600 transition">Сохранить</button>
@@ -346,7 +273,6 @@
         </div>
     </div>
 
-    <!-- МОДАЛКА: ВСЁ ГОТОВО -->
     <div id="allDoneModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
         <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in text-center">
             <div class="text-5xl mb-3">🎉</div>
@@ -359,7 +285,6 @@
         </div>
     </div>
 
-    <!-- TOAST -->
     <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-semibold transition-all duration-300 translate-y-20 opacity-0 z-50 flex items-center gap-2 max-w-sm w-[90%] justify-center">
         <span id="toast-text"></span>
     </div>
@@ -370,10 +295,6 @@
 
     <script>
     (function () {
-        
-        // Хэш SHA-256 от вашего пароля. 
-        // Например, для слова "KPRI2026" хэш будет таким, как ниже.
-        // Сгенерировать хэш для своего пароля можно на любом онлайн-ресурсе (SHA256 generator).
         const AUTH_HASH = "156a0510b488c25fa442b6442013c3e1b5738718aa0d2763b8265df9d00eb126"; 
         
         async function sha256(message) {
@@ -384,12 +305,9 @@
         }
         
         window.checkAuth = async function() {
-            // .trim() убирает случайные пробелы, которые ставит телефонная клавиатура
             const input = document.getElementById('auth-password').value.trim();
             const errorEl = document.getElementById('auth-error');
-            
             if (!input) return;
-            
             const inputHash = await sha256(input);
             
             if (inputHash === AUTH_HASH) {
@@ -407,23 +325,19 @@
             }
         };
         
-        // Проверка авторизации при инициализации страницы
         window.addEventListener('DOMContentLoaded', () => {
             if (sessionStorage.getItem('wh_auth_passed') === 'true') {
                 document.getElementById('screen-auth').classList.add('hidden');
                 document.getElementById('screen-upload').classList.remove('hidden');
             }
-            // Привязка кнопки Enter к инпуту пароля
             document.getElementById('auth-password')?.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') checkAuth();
             });
         });
         
-        // ─── Константы localStorage ─────────────────────────────────────────
-        const LS_KEY      = 'wh_session_v1';      // авто-сохранение прогресса
-        const LS_META_KEY = 'wh_session_meta_v1'; // дата/время последнего сохранения
+        const LS_KEY      = 'wh_session_v1';
+        const LS_META_KEY = 'wh_session_meta_v1';
 
-        // ─── Состояние ──────────────────────────────────────────────────────
         let rawProducts         = [];
         let filteredProducts    = [];
         let initialFilteredList = [];
@@ -431,36 +345,20 @@
         let currentZoneIndex    = null;
         let autoAdvanceTimer    = null;
 
-        // ─── Инициализация ──────────────────────────────────────────────────
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('csv-file').addEventListener('change', handleCsvSelect);
             document.getElementById('session-file').addEventListener('change', handleSessionFileSelect);
             checkRestorable();
         });
 
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: СОХРАНЕНИЕ / ВОССТАНОВЛЕНИЕ СЕССИИ
-        // ════════════════════════════════════════════════════════════════════
-
-        // --- Авто-сохранение в localStorage (вызывается при каждом изменении зоны)
         function autoSave() {
             try {
-                const payload = {
-                    rawProducts,
-                    filteredProducts,
-                    initialFilteredList,
-                    currentIndex,
-                    ts: Date.now()
-                };
+                const payload = { rawProducts, filteredProducts, initialFilteredList, currentIndex, ts: Date.now() };
                 localStorage.setItem(LS_KEY, JSON.stringify(payload));
                 localStorage.setItem(LS_META_KEY, new Date().toISOString());
-            } catch (e) {
-                // Если localStorage переполнен — тихо игнорируем (не прерываем работу)
-                console.warn('autoSave failed:', e);
-            }
+            } catch (e) { console.warn('autoSave failed:', e); }
         }
 
-        // --- Проверяем при загрузке: есть ли что восстанавливать?
         function checkRestorable() {
             try {
                 const raw = localStorage.getItem(LS_KEY);
@@ -469,30 +367,24 @@
                 const dt   = meta ? new Date(meta).toLocaleString('ru-RU') : 'неизвестно';
                 document.getElementById('restore-info').textContent = `Сохранено: ${dt}`;
                 document.getElementById('restore-banner').classList.remove('hidden');
-            } catch (e) { /* ignore */ }
+            } catch (e) { }
         }
 
-        // --- Восстановить сессию из localStorage
         window.restoreSession = function () {
             try {
-                const raw     = localStorage.getItem(LS_KEY);
+                const raw = localStorage.getItem(LS_KEY);
                 if (!raw) return showToast('Нет данных для восстановления');
                 const payload = JSON.parse(raw);
-
                 rawProducts         = payload.rawProducts         || [];
                 filteredProducts    = payload.filteredProducts    || [];
                 initialFilteredList = payload.initialFilteredList || [];
                 currentIndex        = payload.currentIndex        || 0;
-
                 document.getElementById('restore-banner').classList.add('hidden');
                 goToWorkScreen();
                 showToast('✅ Сессия восстановлена', 2500);
-            } catch (e) {
-                showToast('Ошибка восстановления: ' + e.message);
-            }
+            } catch (e) { showToast('Ошибка восстановления: ' + e.message); }
         };
 
-        // --- Сбросить сохранённую сессию
         window.clearSavedSession = function () {
             localStorage.removeItem(LS_KEY);
             localStorage.removeItem(LS_META_KEY);
@@ -500,34 +392,20 @@
             showToast('Сохранённый прогресс удалён');
         };
 
-        // --- Скачать JSON-снимок (кнопка-дискета в шапке)
         window.saveSessionSnapshot = function () {
             if (!rawProducts.length) { showToast('Нет данных для сохранения'); return; }
             try {
-                const payload = {
-                    version: 1,
-                    savedAt: new Date().toISOString(),
-                    rawProducts,
-                    filteredProducts,
-                    initialFilteredList,
-                    currentIndex
-                };
+                const payload = { version: 1, savedAt: new Date().toISOString(), rawProducts, filteredProducts, initialFilteredList, currentIndex };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
                 const url  = URL.createObjectURL(blob);
                 const a    = document.createElement('a');
-                a.href     = url;
-                a.download = `wh_session_${Date.now()}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                a.href     = url; a.download = `wh_session_${Date.now()}.json`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 showToast('💾 Снимок сессии сохранён', 2500);
-            } catch (e) {
-                showToast('Ошибка сохранения: ' + e.message);
-            }
+            } catch (e) { showToast('Ошибка сохранения: ' + e.message); }
         };
 
-        // --- Загрузить JSON-снимок из файла
         async function handleSessionFileSelect(e) {
             const file = e.target.files?.[0];
             if (!file) return;
@@ -535,27 +413,16 @@
                 const text    = await file.text();
                 const payload = JSON.parse(text);
                 if (!payload.rawProducts) throw new Error('Неверный формат файла сессии');
-
                 rawProducts         = payload.rawProducts         || [];
                 filteredProducts    = payload.filteredProducts    || [];
                 initialFilteredList = payload.initialFilteredList || [];
                 currentIndex        = payload.currentIndex        || 0;
-
-                const savedAt = payload.savedAt
-                    ? new Date(payload.savedAt).toLocaleString('ru-RU')
-                    : 'неизвестно';
-
-                autoSave(); // кладём восстановленное обратно в localStorage
+                autoSave();
                 goToWorkScreen();
+                const savedAt = payload.savedAt ? new Date(payload.savedAt).toLocaleString('ru-RU') : 'неизвестно';
                 showToast(`✅ Сессия от ${savedAt}`, 3000);
-            } catch (err) {
-                triggerError('Ошибка загрузки снимка: ' + err.message);
-            }
+            } catch (err) { triggerError('Ошибка загрузки снимка: ' + err.message); }
         }
-
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: ЗАГРУЗКА CSV
-        // ════════════════════════════════════════════════════════════════════
 
         async function handleCsvSelect(e) {
             const file = e.target.files?.[0];
@@ -565,15 +432,12 @@
             try {
                 const text = await file.text();
                 runParsing(text);
-            } catch (err) {
-                triggerError(err.message);
-            }
+            } catch (err) { triggerError(err.message); }
         }
 
         function runParsing(text) {
             const lines = text.split('\n').filter(l => l.trim());
             if (!lines.length) return triggerError('Файл пуст');
-
             const delimiter = lines[0].includes(';') ? ';' : (lines[0].includes('\t') ? '\t' : ',');
             const headers   = parseCsvLine(lines[0], delimiter);
             const idx = {
@@ -585,7 +449,6 @@
                 napr:  findHeaderIndex(headers, ['направление', 'категория']),
                 pol:   findHeaderIndex(headers, ['пол', 'гендер'])
             };
-
             if (idx.tovar === -1) return triggerError('Не найден столбец "Товар"');
 
             const dataMap = {};
@@ -601,42 +464,32 @@
                         tm:    cleanValue(cells[idx.tm]),
                         napr:  cleanValue(cells[idx.napr]),
                         pol:   cleanValue(cells[idx.pol]),
-                        ost_plan: 0,
-                        zones: []
+                        ost_plan: 0, zones: []
                     };
                 }
-
                 const zoneNumber = cleanValue(cells[idx.uch]);
                 const quantity   = parseInt(cleanValue(cells[idx.kol]));
                 if (zoneNumber && !isNaN(quantity) && quantity > 0) {
                     const existing = dataMap[barcode].zones.find(z => z.uch === zoneNumber);
-                    if (existing) {
-                        existing.kol += quantity;
-                    } else {
+                    if (existing) { existing.kol += quantity; } 
+                    else {
                         dataMap[barcode].zones.push({
-                            uch: zoneNumber, kol: quantity,
-                            checked: false, status: 'waiting', comment: ''
+                            uch: zoneNumber, kol: quantity, checked: false, status: 'waiting', comment: ''
                         });
                         dataMap[barcode].ost_plan += quantity;
                     }
                 }
             }
-
             rawProducts = Object.values(dataMap).map(p => {
                 p.zones.sort((a, b) => parseInt(a.uch) - parseInt(b.uch));
                 return p;
             });
-
             document.getElementById('loading-msg').classList.add('hidden');
             document.getElementById('screen-upload').classList.add('hidden');
             document.getElementById('screen-filter').classList.remove('hidden');
             document.getElementById('status-badge').textContent = 'Данные готовы';
             populateFilters();
         }
-
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: ФИЛЬТРЫ
-        // ════════════════════════════════════════════════════════════════════
 
         function populateFilters() {
             const selNapr = document.getElementById('filter-napravlenie');
@@ -645,9 +498,7 @@
 
             function rebuild() {
                 const napr = selNapr.value, tm = selTm.value, pol = selPol.value;
-                const filtered = rawProducts.filter(p =>
-                    (!napr || p.napr === napr) && (!tm || p.tm === tm) && (!pol || p.pol === pol)
-                );
+                const filtered = rawProducts.filter(p => (!napr || p.napr === napr) && (!tm || p.tm === tm) && (!pol || p.pol === pol));
                 const sets = { napr: new Set(), tm: new Set(), pol: new Set() };
                 filtered.forEach(p => { sets.napr.add(p.napr); sets.tm.add(p.tm); sets.pol.add(p.pol); });
                 refreshSelect(selNapr, sets.napr, napr);
@@ -661,26 +512,16 @@
                 [...values].sort().forEach(v => {
                     if (!v) return;
                     const opt = document.createElement('option');
-                    opt.value = opt.textContent = v;
-                    el.appendChild(opt);
+                    opt.value = opt.textContent = v; el.appendChild(opt);
                 });
                 if ([...values].includes(prev)) el.value = prev;
             }
 
             const allN = new Set(), allT = new Set(), allP = new Set();
             rawProducts.forEach(p => { allN.add(p.napr); allT.add(p.tm); allP.add(p.pol); });
-            refreshSelect(selNapr, allN, '');
-            refreshSelect(selTm,   allT, '');
-            refreshSelect(selPol,  allP, '');
-
-            selNapr.addEventListener('change', rebuild);
-            selTm.addEventListener('change', rebuild);
-            selPol.addEventListener('change', rebuild);
+            refreshSelect(selNapr, allN, ''); refreshSelect(selTm, allT, ''); refreshSelect(selPol, allP, '');
+            selNapr.addEventListener('change', rebuild); selTm.addEventListener('change', rebuild); selPol.addEventListener('change', rebuild);
         }
-
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: СТАРТ ПРОВЕРКИ
-        // ════════════════════════════════════════════════════════════════════
 
         window.startVerification = function () {
             const filters = {
@@ -688,13 +529,7 @@
                 tm:   document.getElementById('filter-tm').value,
                 pol:  document.getElementById('filter-pol').value
             };
-
-            let mainList = rawProducts.filter(p =>
-                (!filters.napr || p.napr === filters.napr) &&
-                (!filters.tm   || p.tm   === filters.tm)   &&
-                (!filters.pol  || p.pol  === filters.pol)
-            );
-
+            let mainList = rawProducts.filter(p => (!filters.napr || p.napr === filters.napr) && (!filters.tm || p.tm === filters.tm) && (!filters.pol || p.pol === filters.pol));
             if (!mainList.length) { showToast('Нет товаров по этому фильтру!'); return; }
 
             mainList.sort((a, b) => {
@@ -703,12 +538,8 @@
                 return az !== bz ? az - bz : a.tovar.localeCompare(b.tovar, undefined, { numeric: true });
             });
 
-            initialFilteredList = [...mainList];
-            filteredProducts    = mainList;
-            currentIndex        = 0;
-
-            autoSave();
-            goToWorkScreen();
+            initialFilteredList = [...mainList]; filteredProducts = mainList; currentIndex = 0;
+            autoSave(); goToWorkScreen();
         };
 
         function goToWorkScreen() {
@@ -721,65 +552,51 @@
             renderProduct();
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: РЕНДЕР КАРТОЧКИ
-        // ════════════════════════════════════════════════════════════════════
-
+        // ИСПРАВЛЕННАЯ ФУНКЦИЯ РЕНДЕРА ТОВАРА
         function renderProduct() {
-            const k = state.products[state.currentIndex];
-            
-            // ОБНОВЛЕНИЕ КАРТИНКИ (ДОБАВИТЬ ЭТИ СТРОКИ)
-            const imgEl = document.getElementById('view-image');
-            if (imgEl && k.tovar) {
-                // Задаем путь к файлу в папке img репозитория GitHub Pages
-                imgEl.src = `img/${k.tovar}.jpg`; 
-            }
-
-            // Существующий код заполнения текстовых полей:
-            document.getElementById('view-name').textContent = p.name;
-            document.getElementById('view-tm').textContent = p.tm || '—';
-    
             const p = filteredProducts[currentIndex];
 
-            // Баннер второго круга
+            // Обновление локальной картинки
+            const imgEl = document.getElementById('view-image');
+            if (imgEl && p.tovar) {
+                imgEl.src = `img/${p.tovar}.jpg`; 
+            }
+
+            // Накатываем баннер второго круга
             const isSecondRound = filteredProducts.length < initialFilteredList.length;
             const banner = document.getElementById('incomplete-banner');
             if (isSecondRound) {
                 banner.classList.remove('hidden');
-                document.getElementById('incomplete-banner-text').textContent =
-                    `Незавершённых: ${filteredProducts.length} из ${initialFilteredList.length}`;
-            } else {
-                banner.classList.add('hidden');
-            }
+                document.getElementById('incomplete-banner-text').textContent = `Незавершённых: ${filteredProducts.length} из ${initialFilteredList.length}`;
+            } else { banner.classList.add('hidden'); }
 
-            // Поля через textContent — XSS безопасно
-            document.getElementById('view-napr').textContent     = p.napr;
-            document.getElementById('view-pol').textContent      = p.pol;
-            document.getElementById('view-tm-name').textContent  = p.tm;
-            document.getElementById('view-napr-sub').textContent = p.napr;
+            // Вывод информации в текстовые поля карточки
+            document.getElementById('view-napr').textContent     = p.napr || '—';
+            document.getElementById('view-pol').textContent      = p.pol || '—';
+            document.getElementById('view-tm-name').textContent  = p.tm || '—';
+            document.getElementById('view-napr-sub').textContent = p.napr || '—';
             document.getElementById('view-tovar').textContent    = p.tovar;
             document.getElementById('view-name').textContent     = p.name;
             document.getElementById('count-plan').textContent    = p.ost_plan;
 
-            // Зоны — DOM-безопасное создание
+            // Сборка списка участков
             const container = document.getElementById('zones-list');
             container.innerHTML = '';
 
             p.zones.forEach((z, i) => {
                 const row = document.createElement('div');
                 let bc = 'border-slate-200';
-                if (z.status === 'confirmed')    bc = 'border-emerald-500 bg-emerald-50/50';
+                if (z.status === 'confirmed')     bc = 'border-emerald-500 bg-emerald-50/50';
                 if (z.status === 'not_confirmed') bc = 'border-rose-500 bg-rose-50';
                 row.className = `work-zone-row zone-item flex items-center justify-between border-2 rounded-xl transition ${bc}`;
 
-                const left   = document.createElement('div');
+                const left = document.createElement('div');
                 left.className = 'text-sm text-slate-700';
                 left.textContent = 'Участок: ';
                 const strong = document.createElement('strong');
-                strong.textContent = z.uch;
-                left.appendChild(strong);
+                strong.textContent = z.uch; left.appendChild(strong);
 
-                const right  = document.createElement('div');
+                const right = document.createElement('div');
                 right.className = 'flex gap-2';
 
                 const btnCheck = document.createElement('button');
@@ -790,37 +607,26 @@
                 const btnReject = document.createElement('button');
                 btnReject.className = 'p-1.5 text-rose-500';
                 const icon = document.createElement('i');
-                icon.className = 'material-icons md-20';
-                icon.textContent = 'cancel';
+                icon.className = 'material-icons md-20'; icon.textContent = 'cancel';
                 btnReject.appendChild(icon);
                 btnReject.addEventListener('click', () => openDiscrepancyModal(i));
 
-                right.appendChild(btnCheck);
-                right.appendChild(btnReject);
-                row.appendChild(left);
-                row.appendChild(right);
-                container.appendChild(row);
+                right.appendChild(btnCheck); right.appendChild(btnReject);
+                row.appendChild(left); row.appendChild(right); container.appendChild(row);
             });
 
-            updateTotals();
-            updateProgress();
+            updateTotals(); updateProgress();
         }
-
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: ЛОГИКА ПРОВЕРКИ
-        // ════════════════════════════════════════════════════════════════════
 
         window.toggleZone = function (i) {
             const z = filteredProducts[currentIndex].zones[i];
-            z.checked = !z.checked;
-            z.status  = z.checked ? 'confirmed' : 'waiting';
+            z.checked = !z.checked; z.status = z.checked ? 'confirmed' : 'waiting';
             if (!z.checked) z.comment = '';
-            autoSave(); // ← сохраняем при каждом изменении
-            renderProduct();
+            autoSave(); renderProduct();
         };
 
         function updateTotals() {
-            const p    = filteredProducts[currentIndex];
+            const p = filteredProducts[currentIndex];
             const fact = p.zones.reduce((s, z) => s + (z.checked ? z.kol : 0), 0);
             document.getElementById('count-fact').textContent = fact;
 
@@ -849,74 +655,38 @@
             document.getElementById('progress-bar').style.width    = `${Math.round((completed / total) * 100)}%`;
         }
 
-        function isProductDone(p) {
-            return p.zones.length > 0 && p.zones.every(z => z.status !== 'waiting');
-        }
-
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: АВТО-ПЕРЕХОД (умный следующий)
-        // ════════════════════════════════════════════════════════════════════
+        function isProductDone(p) { return p.zones.length > 0 && p.zones.every(z => z.status !== 'waiting'); }
 
         function autoNextProduct() {
             const nextIdx = findNextIncomplete(currentIndex + 1);
-
-            if (nextIdx !== -1) {
-                currentIndex = nextIdx;
-                renderProduct();
-                return;
-            }
-
+            if (nextIdx !== -1) { currentIndex = nextIdx; renderProduct(); return; }
             const allIncomplete = filteredProducts.filter(p => !isProductDone(p));
+            if (allIncomplete.length === 0) { showAllDoneModal(); return; }
 
-            if (allIncomplete.length === 0) {
-                showAllDoneModal();
-                return;
-            }
-
-            // Второй круг — только незавершённые в исходном порядке
-            const incSet    = new Set(allIncomplete.map(p => p.tovar));
+            const incSet     = new Set(allIncomplete.map(p => p.tovar));
             filteredProducts = initialFilteredList.filter(p => incSet.has(p.tovar));
-            currentIndex     = 0;
-            autoSave();
+            currentIndex     = 0; autoSave();
             showToast(`↩ Второй круг: ${filteredProducts.length} товаров`, 3000);
             renderProduct();
         }
 
         function findNextIncomplete(from) {
-            for (let i = from; i < filteredProducts.length; i++) {
-                if (!isProductDone(filteredProducts[i])) return i;
-            }
+            for (let i = from; i < filteredProducts.length; i++) { if (!isProductDone(filteredProducts[i])) return i; }
             return -1;
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: РУЧНАЯ НАВИГАЦИЯ
-        // ════════════════════════════════════════════════════════════════════
-
         window.nextProductManual = function () {
             if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
-            if (currentIndex < filteredProducts.length - 1) {
-                currentIndex++;
-            } else {
-                currentIndex = 0;
-                showToast('🔄 Начало списка', 2000);
-            }
+            if (currentIndex < filteredProducts.length - 1) { currentIndex++; } 
+            else { currentIndex = 0; showToast('🔄 Начало списка', 2000); }
             renderProduct();
         };
 
         window.prevProduct = function () {
             if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
-            if (currentIndex > 0) {
-                currentIndex--;
-                renderProduct();
-            } else {
-                showToast('⛔ Это начало списка', 2000);
-            }
+            if (currentIndex > 0) { currentIndex--; renderProduct(); } 
+            else { showToast('⛔ Это начало списка', 2000); }
         };
-
-        // ════════════════════════════════════════════════════════════════════
-        //  БЛОК: МОДАЛКИ И УТИЛИТЫ
-        // ════════════════════════════════════════════════════════════════════
 
         window.copyBarcode = function () {
             const b = document.getElementById('view-tovar').textContent;
@@ -933,34 +703,23 @@
             document.getElementById('discrepancyModal').style.display = 'flex';
         };
 
-        window.closeModal = function () {
-            document.getElementById('discrepancyModal').style.display = 'none';
-        };
+        window.closeModal = function () { document.getElementById('discrepancyModal').style.display = 'none'; };
 
         window.saveDiscrepancy = function () {
             const reason = document.getElementById('discrepancyReason').value.trim();
             const z = filteredProducts[currentIndex].zones[currentZoneIndex];
-            z.status  = 'not_confirmed';
-            z.comment = reason || 'Без комментария';
-            z.checked = true;
-            closeModal();
-            autoSave();
-            renderProduct();
+            z.status  = 'not_confirmed'; z.comment = reason || 'Без комментария'; z.checked = true;
+            closeModal(); autoSave(); renderProduct();
         };
 
         function showAllDoneModal() {
             const total      = initialFilteredList.length;
-            const withIssues = initialFilteredList.filter(p =>
-                p.zones.some(z => z.status === 'not_confirmed')
-            ).length;
-            document.getElementById('allDoneText').textContent =
-                `Всего: ${total}. Без замечаний: ${total - withIssues}. С расхождениями: ${withIssues}.`;
+            const withIssues = initialFilteredList.filter(p => p.zones.some(z => z.status === 'not_confirmed')).length;
+            document.getElementById('allDoneText').textContent = `Всего: ${total}. Без замечаний: ${total - withIssues}. С расхождениями: ${withIssues}.`;
             document.getElementById('allDoneModal').style.display = 'flex';
         }
 
-        window.closeAllDoneModal = function () {
-            document.getElementById('allDoneModal').style.display = 'none';
-        };
+        window.closeAllDoneModal = function () { document.getElementById('allDoneModal').style.display = 'none'; };
 
         window.exportDiscrepancies = function () {
             let csv = '\uFEFFТовар;Наименование;ТМ;Направление;Пол;Участок;Кол-во план;Причина\n';
@@ -969,8 +728,7 @@
                 p.zones.forEach(z => {
                     if (z.status === 'not_confirmed') {
                         const e = s => String(s || '').replace(/;/g, ',');
-                        csv += [e(p.tovar), e(p.name), e(p.tm), e(p.napr),
-                                e(p.pol), e(z.uch), z.kol, e(z.comment)].join(';') + '\n';
+                        csv += [e(p.tovar), e(p.name), e(p.tm), e(p.napr), e(p.pol), e(z.uch), z.kol, e(z.comment)].join(';') + '\n';
                         cnt++;
                     }
                 });
@@ -980,20 +738,15 @@
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
             a.href = url; a.download = `errors_${Date.now()}.csv`;
-            document.body.appendChild(a); a.click();
-            document.body.removeChild(a); URL.revokeObjectURL(url);
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
             showToast(`✅ Экспорт: ${cnt} расхождений`);
         };
 
         function showToast(text, duration = 2500) {
             const t = document.getElementById('toast');
             document.getElementById('toast-text').textContent = text;
-            t.classList.remove('translate-y-20', 'opacity-0');
-            t.classList.add('translate-y-0', 'opacity-100');
-            setTimeout(() => {
-                t.classList.remove('translate-y-0', 'opacity-100');
-                t.classList.add('translate-y-20', 'opacity-0');
-            }, duration);
+            t.classList.remove('translate-y-20', 'opacity-0'); t.classList.add('translate-y-0', 'opacity-100');
+            setTimeout(() => { t.classList.remove('translate-y-0', 'opacity-100'); t.classList.add('translate-y-20', 'opacity-0'); }, duration);
         }
 
         function triggerError(m) {
@@ -1006,25 +759,17 @@
             const result = []; let field = '', quoteMode = false;
             for (let i = 0; i < line.length; i++) {
                 const ch = line[i];
-                if (ch === '"' && quoteMode && line[i + 1] === '"') { field += '"'; i++; }
-                else if (ch === '"') { quoteMode = !quoteMode; }
-                else if (ch === delimiter && !quoteMode) { result.push(field.trim()); field = ''; }
+                if (ch === '"' && quoteMode && line[i + 1] === '"') { field += '"'; i++; } 
+                else if (ch === '"') { quoteMode = !quoteMode; } 
+                else if (ch === delimiter && !quoteMode) { result.push(field.trim()); field = ''; } 
                 else { field += ch; }
             }
-            result.push(field.trim());
-            return result;
+            result.push(field.trim()); return result;
         }
 
-        function cleanValue(v) {
-            return v ? v.trim().replace(/^["']|["']$/g, '').replace(/""/g, '"') : '';
-        }
-
-        function findHeaderIndex(arr, keywords) {
-            return arr.findIndex(h => keywords.some(k => h.toLowerCase().includes(k)));
-        }
-
+        function cleanValue(v) { return v ? v.trim().replace(/^["']|["']$/g, '').replace(/""/g, '"') : ''; }
+        function findHeaderIndex(arr, keywords) { return arr.findIndex(h => keywords.some(k => h.toLowerCase().includes(k))); }
     })();
     </script>
-
 </body>
 </html>
