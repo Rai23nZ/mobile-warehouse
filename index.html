@@ -228,8 +228,7 @@
 
                     <div class="flex justify-center bg-white border border-slate-100 rounded-2xl p-2 shadow-sm">
                             <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
-                                 onclick="toggleImageZoom(true)"
-                                 onerror="this.onerror=null; this.src='img/empty.jpg';">
+                                 onclick="toggleImageZoom(true)">
                     </div>
 
                     <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
@@ -629,12 +628,21 @@
             // Обновление локальной картинки
             // ИСПРАВЛЕННЫЙ ВАРЯНТ ОБНОВЛЕНИЯ КАРТИНКИ С ОБХОДОМ КЭША
             const imgEl = document.getElementById('view-image');
-            const VERSION = "04_07_2026"; // Меняйте эту строчку на ПК, когда обновляете базу картинок на GitHub
+            
             if (imgEl && p.tovar) {
                 // Добавляем к ссылке случайный или временной параметр ?v=...
                 // Date.now() генерирует уникальное число каждую миллисекунду.
                 // Это заставит Safari всегда делать реальный запрос на GitHub Pages, 
                 // и если вы удалили картинку — он сразу покажет empty.jpg
+                const VERSION = "04_07_2026"; // Меняйте эту строчку на ПК, когда обновляете базу картинок на GitHub
+                // Вешаем обработчик ошибки напрямую в JS перед установкой src
+                imgEl.onerror = function() {
+                    // Если основная картинка SKU выдала 404, подставляем empty.jpg
+                    // Добавление версии гарантирует, что Safari принудительно перерисует экран
+                    this.src = `img/empty.jpg?v=${VERSION}`;
+                    this.onerror = null; // Защита от бесконечного цикла
+                };
+                // Запускаем загрузку основной картинки товара
                 imgEl.src = `img/${p.tovar}.jpg?v=${VERSION}`;
             }
 
