@@ -234,28 +234,27 @@
                         </div>
                     </div>
 
-                    <!-- Штрихкод -->
-                    <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
-                        <div>
-                            <span class="text-[10px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Штрихкод</span>
-                            <span id="view-tovar" class="text-base font-mono font-bold tracking-wider text-slate-900 leading-none"></span>
-                        </div>
-                        <button onclick="copyBarcode()" class="text-indigo-600 hover:text-indigo-800 p-2 bg-white rounded-lg shadow-sm border border-slate-100 active:scale-95 transition">
-                            <i class="material-icons md-20">content_copy</i>
-                        </button>
-                    </div>
-
                     <!-- КАРТИНКА -->
                     <div id="screen-main" class="space-y-3 hidden flex-1 flex flex-col justify-between">
                         <div class="space-y-2">
                             
                             <div class="flex justify-center bg-white border border-slate-100 rounded-2xl p-2 shadow-sm">
                                 <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
-                                    onerror="this.src='https://cdn.sportmaster.ru/assets/images/no-image.png';">
+                                    onerror="this.onerror=null; this.src='img/empty.jpg';">
                             </div>
 
                             <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 space-y-1 relative">
-                                <div id="view-name" class="text-sm font-bold text-slate-800 leading-tight pr-7"></div>
+
+                    <!-- Артикул -->
+                    <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Артикул</span>
+                            <span id="view-tovar" class="text-base font-mono font-bold tracking-wider text-slate-900 leading-none"></span>
+                        </div>
+                        <button onclick="copyBarcode()" class="text-indigo-600 hover:text-indigo-800 p-2 bg-white rounded-lg shadow-sm border border-slate-100 active:scale-95 transition">
+                            <i class="material-icons md-20">content_copy</i>
+                        </button>
+                    </div>
 
                     <!-- Наименование -->
                     <div>
