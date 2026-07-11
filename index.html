@@ -85,16 +85,34 @@
         .img-zoom-overlay.active img {
             transform: scale(1);
         }
+
+        /* ── НАСТРОЙКИ ЖЕСТКОГО КАРКАСА И СКРОЛЛА ── */
+        /* Отключаем эластичный скролл всей страницы (эффект резинки на iOS) */
+        html, body {
+            overscroll-behavior-y: none;
+        }
+
+        /* Красивый тонкий скроллбар для списка зон (Webkit) */
+        .custom-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* slate-300 */
+            border-radius: 10px;
+        }
         
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased select-none">
+<body class="bg-slate-50 text-slate-800 h-[100dvh] overflow-hidden flex flex-col font-sans antialiased select-none">
 
     <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50" style="padding: 10px 16px;">
         <div class="max-w-md mx-auto flex justify-between items-center gap-3">
             <h1 class="text-base font-bold tracking-tight flex items-center gap-2 flex-shrink-0">
                 <i class="material-icons md-20">inventory_2</i>
-                Мобильная Проверка
+                Контрольная проверка
             </h1>
             <button id="btn-save-session"
                 onclick="saveSessionSnapshot()"
@@ -107,7 +125,8 @@
         </div>
     </header>
 
-    <main class="flex-grow p-3 max-w-md mx-auto w-full">
+    <!-- MAIN ТЕПЕРЬ ТОЖЕ ЖЕСТКИЙ КОНТЕЙНЕР -->
+    <main class="flex-1 overflow-hidden p-2 max-w-md mx-auto w-full flex flex-col">
         
         <div id="screen-auth" class="space-y-4 fade-in">
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 text-center">
@@ -204,9 +223,13 @@
             </div>
         </div>
 
-        <div id="screen-work" class="fade-in hidden flex flex-col" style="gap: 8px;">
+        <!-- ═══════════════════════════════════════════
+             ЭКРАН 3: РАБОЧИЙ ЭКРАН (ЖЕСТКИЙ FLEX-КАРКАС)
+        ════════════════════════════════════════════ -->
+        <div id="screen-work" class="fade-in hidden flex-1 overflow-hidden flex-col" style="gap: 8px;">
 
-            <div id="incomplete-banner" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl flex items-center gap-3" style="padding: 8px 14px;">
+            <!-- Баннер второго круга (Жесткий) -->
+            <div id="incomplete-banner" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl items-center gap-3 flex-shrink-0" style="padding: 8px 14px;">
                 <i class="material-icons md-20 text-amber-500 flex-shrink-0">loop</i>
                 <div class="text-xs">
                     <span class="font-bold">Второй круг · </span>
@@ -214,59 +237,95 @@
                 </div>
             </div>
 
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-shrink-0">
-
-                <div class="work-badge-row bg-slate-50 border-b border-slate-100 flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <!-- ── КАРТОЧКА ТОВАРА (Жесткая, не сжимается) ── -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-shrink-0 flex flex-col">
+                <!-- Строка: направление / пол -->
+                <div class="work-badge-row bg-slate-50 border-b border-slate-100 flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider flex-shrink-0">
                     <span id="view-napr"></span>
                     <span id="view-pol" class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-[10px]"></span>
                 </div>
 
-                <div class="work-card-inner space-y-2.5">
-
+                <div class="work-card-inner space-y-2 flex-shrink-0">
+                    <!-- TM + категория -->
                     <div class="flex justify-between items-start work-tm-block">
-                        <div>
+                        <div class="min-w-0">
                             <span class="text-[10px] font-bold text-slate-400 uppercase">Бренд (ТМ)</span>
-                            <div id="view-tm-name" class="text-sm font-bold text-indigo-600 tracking-tight leading-tight"></div>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-[10px] font-bold text-slate-400 uppercase">Категория</span>
-                            <div id="view-napr-sub" class="text-sm font-bold text-slate-700"></div>
+                            <div id="view-tm-name" class="text-sm font-bold text-indigo-600 tracking-tight leading-tight truncate"></div>
                         </div>
                     </div>
 
-                    <div class="flex justify-center bg-white border border-slate-100 rounded-2xl p-2 shadow-sm">
-                            <img id="view-image" src="" alt="Товар" class="h-32 w-auto object-contain rounded-xl" 
-                                 onclick="toggleImageZoom(true)">
+                    <!-- ЛОКАЛЬНАЯ КАРТИНКА (Адаптивная высота под экран) -->
+                    <div class="flex justify-center bg-white border border-slate-100 rounded-xl p-1.5 shadow-sm">
+                        <!-- h-[12vh] позволяет картинке стать чуть меньше на очень коротких телефонах, уступая место контенту -->
+                        <img id="view-image" alt="Товар" class="h-[12vh] min-h-[80px] max-h-[140px] w-auto object-contain rounded-lg" 
+                             onclick="toggleImageZoom(true)">
                     </div>
 
-                    <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
+                    <!-- Артикул и Наименование -->
+                    <div class="flex flex-col gap-2">
+                        <div class="work-barcode-row bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Артикул</span>
+                                <span id="view-tovar" class="text-base font-mono font-bold tracking-wider text-slate-900 leading-none"></span>
+                            </div>
+                            <button onclick="copyBarcode()" class="text-indigo-600 hover:text-indigo-800 p-2 bg-white rounded-lg shadow-sm border border-slate-100 active:scale-95 transition">
+                                <i class="material-icons md-20">content_copy</i>
+                            </button>
+                        </div>
                         <div>
-                            <span class="text-[10px] font-bold text-slate-400 uppercase block leading-none mb-0.5">Артикул</span>
-                            <span id="view-tovar" class="text-base font-mono font-bold tracking-wider text-slate-900 leading-none"></span>
+                            <div id="view-name" class="work-name-block text-sm font-extrabold text-slate-950 bg-amber-50 border border-amber-200 rounded-xl leading-snug line-clamp-2"></div>
                         </div>
-                        <button onclick="copyBarcode()" class="text-indigo-600 hover:text-indigo-800 p-2 bg-white rounded-lg shadow-sm border border-slate-100 active:scale-95 transition">
-                            <i class="material-icons md-20">content_copy</i>
-                        </button>
                     </div>
 
-                    <div>
-                        <span class="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Наименование</span>
-                        <div id="view-name" class="work-name-block text-base font-extrabold text-slate-950 bg-amber-50 border border-amber-200 rounded-xl leading-snug"></div>
-                    </div>
-
+                    <!-- План / Факт -->
                     <div id="totals-panel" class="work-totals grid grid-cols-2 rounded-xl bg-slate-100 border-2 border-transparent transition-all duration-300">
                         <div class="text-center border-r border-slate-200">
                             <span class="text-[10px] font-bold text-slate-500 uppercase block">Должно быть</span>
-                            <span class="text-2xl font-black text-slate-900"><span id="count-plan">0</span> <span class="text-xs font-medium">шт</span></span>
+                            <span class="text-xl font-black text-slate-900"><span id="count-plan">0</span> <span class="text-[10px] font-medium">шт</span></span>
                         </div>
                         <div class="text-center">
                             <span class="text-[10px] font-bold text-slate-500 uppercase block">Подтверждено</span>
-                            <span class="text-2xl font-black text-slate-900"><span id="count-fact">0</span> <span class="text-xs font-medium">шт</span></span>
+                            <span class="text-xl font-black text-slate-900"><span id="count-fact">0</span> <span class="text-[10px] font-medium">шт</span></span>
                         </div>
                     </div>
-
                 </div>
             </div>
+
+            <!-- ── ЗОНЫ (Резиновый блок с локальным скроллом) ── -->
+            <div class="flex-1 min-h-[80px] bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                <span class="work-zones-label text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-3 pt-2.5 pb-1 border-b border-slate-50 flex-shrink-0 bg-white z-10">Участки сканирования</span>
+                
+                <!-- Внутренний контейнер, который будет прокручиваться -->
+                <div id="zones-list" class="flex-1 overflow-y-auto custom-scroll p-2 flex flex-col" style="gap: 6px;">
+                    <!-- Сюда JS вставляет зоны -->
+                </div>
+            </div>
+
+            <!-- ── НАВИГАЦИЯ + ЭКСПОРТ (Жесткий, всегда внизу) ── -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0">
+                <div class="work-nav-inner flex flex-col">
+                    <div class="flex gap-2">
+                        <button onclick="prevProduct()" class="work-nav-btn flex-1 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
+                            <i class="material-icons md-20">arrow_back_ios</i> Назад
+                        </button>
+                        <button onclick="nextProductManual()" class="work-nav-btn flex-1 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
+                            Вперёд <i class="material-icons md-20">arrow_forward_ios</i>
+                        </button>
+                    </div>
+
+                    <div class="work-progress flex flex-col pt-1">
+                        <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
+                            <span>Прогресс</span>
+                            <span id="progress-text">0 из 0</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden my-0.5">
+                            <div id="progress-bar" class="bg-indigo-600 h-full transition-all duration-300" style="width:0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /screen-work -->
 
             <div class="flex-shrink-0">
                 <span class="work-zones-label text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">Участки сканирования</span>
