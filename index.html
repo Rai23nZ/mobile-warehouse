@@ -42,43 +42,6 @@
         <meta name="apple-mobile-web-app-title" content="Контрольная проверка">
         <link rel="apple-touch-icon" href="icon-512.png">
         
-        /* ── ЭФФЕКТ УВЕЛИЧЕНИЯ КАРТИНКИ ── */
-        /* Полноэкранный контейнер-подложка */
-        .img-zoom-overlay {
-            position: fixed;
-            inset: 0;
-            background-color: rgba(15, 23, 42, 0.85); /* Темный полупрозрачный фон */
-            z-index: 200;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.25s ease-in-out;
-            backdrop-filter: blur(4px); /* Легкое размытие заднего плана для iOS */
-        }
-
-        /* Активное состояние подложки */
-        .img-zoom-overlay.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        /* Картинка внутри модального режима */
-        .img-zoom-overlay img {
-            max-width: 90vw;
-            max-height: 85vh;
-            object-contain: contain;
-            border-radius: 16px;
-            transform: scale(0.9);
-            transition: transform 0.25s ease-in-out;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-
-        .img-zoom-overlay.active img {
-            transform: scale(1);
-        }
-
         /* Курсор-указатель для кликабельной картинки на рабочем экране */
         #view-image {
             cursor: zoom-in;
@@ -87,6 +50,41 @@
         #view-image:active {
             transform: scale(0.96); /* Легкий отклик на нажатие */
         }
+        
+        /* ── ЭФФЕКТ УВЕЛИЧЕНИЯ КАРТИНКИ ── */
+        .img-zoom-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(15, 23, 42, 0.9);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease-in-out;
+            backdrop-filter: blur(4px);
+        }
+        .img-zoom-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .img-zoom-overlay img {
+            max-width: 95vw;
+            max-height: 85vh;
+            object-fit: contain; /* Исправлено свойство */
+            border-radius: 16px;
+            transform: scale(0.9);
+            transition: transform 0.25s ease-in-out;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .img-zoom-overlay.active img {
+            transform: scale(1);
+        }
+        
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased select-none">
@@ -356,6 +354,14 @@
 
     <script>
     (function () {
+        
+        // Регистрация Service Worker для PWA на Android
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(function(err) {
+                console.log('Ошибка регистрации Service Worker:', err);
+            });
+        }
+        
         const AUTH_HASH = "156a0510b488c25fa442b6442013c3e1b5738718aa0d2763b8265df9d00eb126"; 
         
         async function sha256(message) {
