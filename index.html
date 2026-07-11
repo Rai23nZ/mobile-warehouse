@@ -32,7 +32,16 @@
         .work-nav-inner    { padding: 10px 14px; gap: 8px; }
         .work-nav-btn      { padding: 10px 14px; }
         .work-progress     { gap: 4px; }
-
+        
+        /*-- Подключение манифеста для Android --*/
+        <link rel="manifest" href="manifest.json">
+        
+        /*-- Специфичные теги для iPhone (Safari игнорирует часть манифеста) --*/
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Контрольная проверка">
+        <link rel="apple-touch-icon" href="icon-512.png">
+        
         /* ── ЭФФЕКТ УВЕЛИЧЕНИЯ КАРТИНКИ ── */
         /* Полноэкранный контейнер-подложка */
         .img-zoom-overlay {
