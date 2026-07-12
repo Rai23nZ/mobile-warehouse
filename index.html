@@ -727,7 +727,7 @@
 
         const imgEl = document.getElementById('view-image');
         if (imgEl && p.tovar) {
-            const VERSION = Date.now();
+            const VERSION = "12_07_2026";
             imgEl.onerror = function () {
                 this.src = `img/empty.jpg?v=${VERSION}`;
                 this.onerror = null;
