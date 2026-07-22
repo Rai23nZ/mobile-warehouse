@@ -312,7 +312,7 @@
                         <span class="text-2xl font-black text-slate-900 leading-none"><span id="count-plan">0</span> <span class="text-[10px] font-medium">шт</span></span>
                     </div>
                     <div class="text-center">
-                        <span class="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Подтверждено</span>
+                        <span class="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Проверено</span>
                         <span class="text-2xl font-black text-slate-900 leading-none"><span id="count-fact">0</span> <span class="text-[10px] font-medium">шт</span></span>
                     </div>
                 </div>
@@ -727,7 +727,7 @@
 
         const imgEl = document.getElementById('view-image');
         if (imgEl && p.tovar) {
-            const VERSION = "20_07_2026";
+            const VERSION = "23_07_2026";
             imgEl.onerror = function () {
                 this.src = `img/empty.jpg?v=${VERSION}`;
                 this.onerror = null;
