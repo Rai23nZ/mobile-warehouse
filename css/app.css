@@ -461,6 +461,158 @@ html, body { overscroll-behavior-y: none; }
 .net-option:has(input:checked) { background: var(--indigo-50); border-color: var(--indigo-300); }
 @media (hover: hover) { .net-option:hover { background: var(--indigo-50); } }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   ОКНО «НЕ ПОДТВЕРЖДЕНО»
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Окно не должно вылезать за экран: шапка и кнопки закреплены,
+   прокручивается только середина */
+.disc-card { max-height: calc(100dvh - 2rem); }
+.disc-body { overscroll-behavior: contain; }
+
+/* Плитки причин: все восемь видны сразу, попадание одним касанием —
+   на складе это заметно быстрее раскрывающегося списка */
+.reason-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+}
+.reason-tile {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    min-height: 58px; padding: .5rem .375rem;
+    border: 1px solid var(--slate-200);
+    border-radius: .75rem;
+    background: var(--slate-50);
+    color: var(--slate-700);
+    font-size: 11px; font-weight: 700; line-height: 1.25;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s, color .15s;
+}
+.reason-tile[aria-checked="true"] {
+    background: var(--indigo-600);
+    border-color: var(--indigo-600);
+    color: #fff;
+}
+.reason-tile:active { transform: scale(.97); }
+@media (hover: hover) {
+    .reason-tile:hover { background: var(--indigo-50); border-color: var(--indigo-300); }
+    .reason-tile[aria-checked="true"]:hover { background: var(--indigo-700); border-color: var(--indigo-700); }
+}
+/* Значок у причин, которые ведут на второй шаг */
+.reason-tile .icon { margin-bottom: 2px; opacity: .55; }
+.reason-tile[aria-checked="true"] .icon { opacity: .9; }
+
+/* Выбранная причина на втором шаге */
+.disc-chip {
+    display: inline-block;
+    background: var(--indigo-50); color: var(--indigo-700);
+    border: 1px solid var(--indigo-200);
+    border-radius: 9999px;
+    padding: .25rem .75rem;
+    font-size: 11px; font-weight: 700;
+}
+
+/* Фото найденного товара. Если файла нет — просто белый прямоугольник
+   без надписей: заглушка empty.jpg с текстом «НЕТ ФОТО» тут неуместна,
+   она читалась бы как утверждение о самом товаре */
+.found-photo {
+    width: 64px; height: 64px;
+    border: 1px solid var(--slate-200);
+    border-radius: .5rem;
+    background: #fff;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+}
+.found-photo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.found-photo img[hidden] { display: none; }
+
+/* Счётчик количества */
+.qty-control { display: flex; align-items: center; gap: .25rem; }
+.qty-control button {
+    width: 36px; height: 36px;
+    border: 1px solid var(--slate-200);
+    border-radius: .5rem;
+    background: var(--slate-50);
+    color: var(--slate-700);
+    font-size: 20px; font-weight: 700; line-height: 1;
+}
+.qty-control button:disabled { opacity: .4; }
+.qty-control button:active:not(:disabled) { background: var(--slate-200); }
+.qty-control input {
+    width: 56px; height: 36px;
+    text-align: center;
+    border: 1px solid var(--slate-200);
+    border-radius: .5rem;
+    background: #fff;
+    font-size: 15px; font-weight: 700;
+    -moz-appearance: textfield;
+}
+.qty-control input::-webkit-outer-spin-button,
+.qty-control input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Неактивная кнопка сохранения, пока причина не выбрана */
+#disc-save-btn:disabled { opacity: .45; cursor: not-allowed; }
+@media (hover: hover) { #disc-save-btn:disabled:hover { background-color: var(--rose-500); } }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   СЛОЙ СКАНИРОВАНИЯ
+   ═══════════════════════════════════════════════════════════════════════ */
+#scannerOverlay { display: none; }
+#scannerOverlay.flex { display: flex; }
+
+.scanner-video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    background: #000;
+}
+
+/* Рамка-прицел: подсказывает, куда наводить */
+.scanner-frame {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(78vw, 340px); height: 190px;
+    border: 2px solid rgb(255 255 255 / .85);
+    border-radius: 14px;
+    box-shadow: 0 0 0 100vmax rgb(15 23 42 / .55);
+    pointer-events: none;
+}
+/* Бегущая линия — видно, что сканер работает */
+.scanner-frame span {
+    position: absolute; left: 8px; right: 8px; top: 0; height: 2px;
+    background: var(--rose-500);
+    box-shadow: 0 0 8px var(--rose-500);
+    animation: scanSweep 2s ease-in-out infinite;
+}
+@keyframes scanSweep {
+    0%, 100% { top: 8px; }
+    50%      { top: calc(100% - 10px); }
+}
+
+.scanner-top {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between;
+    padding: max(1rem, env(safe-area-inset-top)) 1rem 1rem;
+    z-index: 2;
+}
+.scanner-bottom {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; flex-direction: column; gap: .75rem;
+    padding: 1rem 1rem max(1.25rem, env(safe-area-inset-bottom));
+    z-index: 2;
+}
+.scanner-btn {
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 9999px;
+    background: rgb(0 0 0 / .45);
+    color: #fff;
+    backdrop-filter: blur(4px);
+}
+.scanner-torch-on { background: var(--amber-500); color: var(--slate-900); }
+
 /* Полноэкранный просмотр фото */
 .img-zoom-overlay {
     position: fixed; inset: 0;

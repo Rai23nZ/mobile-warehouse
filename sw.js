@@ -9,8 +9,9 @@
    При изменении файлов оболочки поднимать SHELL_VERSION.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const SHELL_VERSION = 'shell-v3';
+const SHELL_VERSION = 'shell-v4';
 const IMG_CACHE     = 'imgs-v1';
+const DATA_CACHE    = 'data-v1';
 const MAX_IMAGES    = 1500;          // мягкий предел, чтобы кэш не рос бесконечно
 
 const SHELL_ASSETS = [
@@ -22,6 +23,10 @@ const SHELL_ASSETS = [
     './js/csv.js',
     './js/ui.js',
     './js/app.js',
+    './js/reasons.js',
+    './js/catalog.js',
+    './js/scanner.js',
+    './vendor/zxing.min.js',
     './img/empty.jpg',
     './icon-192.png',
     './icon-512.png'
@@ -44,10 +49,8 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         const keys = await caches.keys();
-        await Promise.all(
-            keys.filter(k => k !== SHELL_VERSION && k !== IMG_CACHE)
-                .map(k => caches.delete(k))
-        );
+        const keep = [SHELL_VERSION, IMG_CACHE, DATA_CACHE];
+        await Promise.all(keys.filter(k => !keep.includes(k)).map(k => caches.delete(k)));
         await self.clients.claim();
     })());
 });
@@ -61,10 +64,30 @@ self.addEventListener('fetch', event => {
     if (url.origin !== self.location.origin) return;   // чужие домены не трогаем
 
     const isImage = req.destination === 'image' || /\.(jpe?g|png|webp|gif|svg)$/i.test(url.pathname);
-    if (isImage)              event.respondWith(handleImage(req));
+    const isData  = url.pathname.includes('/data/');
+
+    if (isImage)                      event.respondWith(handleImage(req));
+    else if (isData)                  event.respondWith(handleData(req));
     else if (req.mode === 'navigate') event.respondWith(handleNavigate(req));
-    else                      event.respondWith(handleAsset(req));
+    else                              event.respondWith(handleAsset(req));
 });
+
+/* Справочники товаров: сначала сеть, кэш — как запасной вариант.
+   База дополняется по несколько раз в неделю, и обновление должно
+   доезжать до устройства простой заменой файла, без поднятия
+   SHELL_VERSION. HEAD-запросы пропускаем к сети напрямую: по ним
+   catalog.js сверяет размер и дату файла со своим индексом. */
+async function handleData(req) {
+    const cache = await caches.open(DATA_CACHE);
+    try {
+        const res = await fetch(req);
+        if (res && res.ok && req.method === 'GET') cache.put(req, res.clone());
+        return res;
+    } catch (e) {
+        const cached = await cache.match(req, { ignoreSearch: true });
+        return cached || new Response('', { status: 504 });
+    }
+}
 
 /* HTML — сначала сеть: иначе страница отстаёт на одну перезагрузку и может
    разойтись по версии с закэшированными css/js. Без сети отдаём кэш. */

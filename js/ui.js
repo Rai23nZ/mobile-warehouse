@@ -21,9 +21,19 @@ const CACHED_IDS = [
     'progress-text', 'completed-count', 'progress-bar',
     'status-badge', 'btn-save-session',
     'toast', 'toast-text',
-    'discrepancyModal', 'discrepancyReason', 'modalProductName',
     'allDoneModal', 'allDoneText',
-    'imageZoomOverlay', 'zoom-image-target'
+    'imageZoomOverlay', 'zoom-image-target',
+
+    // окно «Не подтверждено»
+    'discrepancyModal', 'modalProductName', 'disc-zone-info',
+    'disc-step1', 'disc-step2', 'reason-tiles', 'disc-chosen-reason',
+    'disc-scan-btn', 'disc-manual-row', 'disc-manual-input',
+    'disc-found', 'disc-found-img', 'disc-found-tovar', 'disc-found-name', 'disc-found-bc',
+    'disc-qty', 'disc-qty-hint', 'disc-comment',
+    'disc-left-btn', 'disc-save-btn',
+
+    // слой сканирования
+    'scannerOverlay', 'scanner-video', 'scanner-hint', 'scanner-error', 'scanner-torch'
 ];
 
 export function cacheDom() {

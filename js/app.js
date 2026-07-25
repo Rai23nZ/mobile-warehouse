@@ -15,6 +15,10 @@ import {
     buildProducts, buildReport, compareProductsForRoute, HEADER_TITLES
 } from './csv.js';
 
+import { REASONS, reasonLabel, reasonNeedsScan, NO_ARTICLE } from './reasons.js';
+import { loadForNetwork, findByBarcode, normalizeBarcode, catalogSize } from './catalog.js';
+import { scanBarcode, cancelScan, toggleTorch, isScannerOpen } from './scanner.js';
+
 import {
     el, cacheDom, showScreen, getScreen, defaultBadgeFor, setStatusBadge,
     openModal, closeModal, isModalOpen, anyModalOpen,
@@ -73,6 +77,7 @@ function goToWorkScreen() {
     showScreen('work');
     setStatusBadge(isStorageBroken() ? 'НЕ СОХРАНЯЕТСЯ' : defaultBadgeFor('work'), isStorageBroken());
     renderProduct();
+    prepareCatalog();       // справочник ШК нужен и после восстановления сессии
 }
 
 /* ── Восстановление сессии ────────────────────────────────────────── */
@@ -246,6 +251,15 @@ function startVerification() {
     preloadImages(store.order);
 }
 
+/* Справочник грузится в фоне: он нужен только при первом расхождении,
+   а до него у кладовщика обычно есть время. Отсутствие файла ошибкой не
+   считается — у сети может ещё не быть базы. */
+async function prepareCatalog() {
+    const res = await loadForNetwork(store.network, msg => showToast(msg, 4000));
+    if (res.ok && !res.cached) showToast(`📚 База ${store.network}: ${res.products} артикулов`, 2500);
+    else if (!res.ok) console.warn('[catalog]', res.reason);
+}
+
 /* ── Изображения ──────────────────────────────────────────────────── */
 const ASSET_VERSION = '25_07_2026';
 const imgUrl   = tovar => `img/${store.network}/${tovar}.jpg?v=${ASSET_VERSION}`;
@@ -289,7 +303,6 @@ const ZONE_BORDER = {
 };
 
 let zoneRows = [];          // [{ row, btnCheck, btnReject }] — параллельно p.zones
-let currentZoneIndex = null;
 let autoAdvanceTimer = null;
 
 function renderProduct() {
@@ -391,7 +404,10 @@ function toggleZone(i) {
     const z = currentProduct().zones[i];
     z.checked = !z.checked;
     z.status  = z.checked ? 'confirmed' : 'waiting';
-    if (!z.checked) z.comment = '';
+    /* Снятие отметки возвращает участок в исходное состояние: иначе
+       причина и найденный товар от прежнего расхождения остались бы
+       висеть на подтверждённом участке и попали бы в отчёт. */
+    if (!z.checked) { z.comment = ''; z.reason = null; z.found = null; }
     paintZone(i, z);
     updateTotals();
     updateProgress();
@@ -459,23 +475,204 @@ function prevProduct() {
     else showToast('⛔ Это начало списка', 2000);
 }
 
-/* ── Расхождения ──────────────────────────────────────────────────── */
-function openDiscrepancyModal(i) {
-    currentZoneIndex = i;
-    cancelAutoAdvance();
-    el['modalProductName'].textContent = currentProduct().name;
-    el['discrepancyReason'].value = '';
-    openModal('discrepancyModal', 'discrepancyReason');
+/* ══════════════════════════════════════════════════════════════════════
+   ОКНО «НЕ ПОДТВЕРЖДЕНО»
+
+   Шаг 1 — причина плитками: все восемь видны сразу, попадание одним
+   касанием. Шаг 2 открывается только для трёх причин, связанных со
+   штрихкодом, — для остальных сканировать нечего, и лишний экран там
+   только мешал бы.
+   ══════════════════════════════════════════════════════════════════════ */
+const disc = {
+    zoneIndex: null,
+    reason   : null,
+    found    : null,      // { barcode, tovar, name, kol } | null
+    step     : 1,
+    maxQty   : 1
+};
+
+/* Плитки строятся один раз при запуске */
+function buildReasonTiles() {
+    const box = el['reason-tiles'];
+    box.textContent = '';
+    REASONS.forEach(r => {
+        const tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'reason-tile';
+        tile.dataset.action = 'pick-reason';
+        tile.dataset.reason = r.id;
+        tile.setAttribute('role', 'radio');
+        tile.setAttribute('aria-checked', 'false');
+        if (r.needsScan) tile.appendChild(svgIcon('i-scan', 18));   // ведёт на шаг 2
+        tile.appendChild(document.createTextNode(r.label));
+        box.appendChild(tile);
+    });
 }
 
+function openDiscrepancyModal(i) {
+    cancelAutoAdvance();
+    const p = currentProduct();
+    const z = p.zones[i];
+
+    disc.zoneIndex = i;
+    disc.maxQty    = Math.max(1, z.kol);
+    /* Повторное открытие подставляет уже записанное: если кладовщик
+       ошибся плиткой, он должен видеть, что было выбрано. */
+    disc.reason = z.reason || null;
+    disc.found  = z.found ? { ...z.found } : null;
+
+    el['modalProductName'].textContent = p.name || p.tovar;
+    el['disc-zone-info'].textContent   = `Участок ${z.uch} · план ${z.kol} шт`;
+    el['disc-comment'].value           = z.comment || '';
+    el['disc-manual-row'].classList.add('hidden');
+    el['disc-manual-input'].value      = '';
+
+    paintReasonTiles();
+    renderFound();
+    goStep(disc.reason && reasonNeedsScan(disc.reason) ? 2 : 1);
+    openModal('discrepancyModal');
+}
+
+function paintReasonTiles() {
+    [...el['reason-tiles'].children].forEach(tile => {
+        tile.setAttribute('aria-checked', String(tile.dataset.reason === disc.reason));
+    });
+}
+
+function goStep(n) {
+    disc.step = n;
+    el['disc-step1'].classList.toggle('hidden', n !== 1);
+    el['disc-step2'].classList.toggle('hidden', n !== 2);
+    el['disc-left-btn'].textContent = n === 2 ? '← Назад' : 'Отмена';
+    if (n === 2) el['disc-chosen-reason'].textContent = reasonLabel(disc.reason);
+    updateSaveButton();
+    el['discrepancyModal'].querySelector('.disc-body')?.scrollTo(0, 0);
+}
+
+/* Причина обязательна всегда; для трёх «штрихкодных» причин обязателен
+   ещё и отсканированный товар. */
+function canSave() {
+    if (!disc.reason) return false;
+    if (reasonNeedsScan(disc.reason) && !disc.found) return false;
+    return true;
+}
+
+function updateSaveButton() { el['disc-save-btn'].disabled = !canSave(); }
+
+function pickReason(id) {
+    disc.reason = id;
+    paintReasonTiles();
+    if (reasonNeedsScan(id)) goStep(2);
+    else { disc.found = null; renderFound(); updateSaveButton(); }
+}
+
+function discLeft() {
+    if (disc.step === 2) goStep(1);
+    else closeModal('discrepancyModal');
+}
+
+/* ── Что оказалось вместо ─────────────────────────────────────────── */
+function renderFound() {
+    const box = el['disc-found'];
+    if (!disc.found) { box.classList.add('hidden'); return; }
+
+    const { barcode, tovar, name, kol } = disc.found;
+    el['disc-found-tovar'].textContent = tovar || NO_ARTICLE;
+    el['disc-found-name'].textContent  = name || (tovar ? '' : 'артикул по этому ШК не найден в базе');
+    el['disc-found-bc'].textContent    = 'ШК ' + barcode;
+
+    /* Фото ищется только в папке выбранной сети. Файла нет — остаётся
+       белый прямоугольник без надписей. */
+    const img = el['disc-found-img'];
+    img.hidden = true;
+    if (tovar) {
+        img.onload  = () => { img.hidden = false; };
+        img.onerror = () => { img.hidden = true; };
+        img.src = imgUrl(tovar);
+        img.alt = 'Фото товара ' + tovar;
+    } else {
+        img.removeAttribute('src');
+    }
+
+    el['disc-qty'].value    = kol;
+    el['disc-qty'].max      = disc.maxQty;
+    el['disc-qty-hint'].textContent = `от 1 до ${disc.maxQty} (план участка)`;
+    box.classList.remove('hidden');
+    updateQtyButtons();
+    updateSaveButton();
+}
+
+function setFoundByBarcode(rawBarcode) {
+    const barcode = normalizeBarcode(rawBarcode);
+    if (!barcode) return;
+    const hit = findByBarcode(barcode);
+    // повторное сканирование заменяет ранее найденный товар
+    disc.found = {
+        barcode,
+        tovar: hit ? hit.tovar : '',
+        name : hit ? hit.name  : '',
+        kol  : 1                       // от минимума диапазона, поднимает пользователь
+    };
+    renderFound();
+    showToast(hit ? `✅ ${hit.tovar}` : `⚠️ ШК ${barcode} не найден в базе`, hit ? 1800 : 3000);
+}
+
+async function doScan() {
+    const code = await scanBarcode();
+    if (code) setFoundByBarcode(code);
+}
+
+function toggleManualInput() {
+    const row = el['disc-manual-row'];
+    row.classList.toggle('hidden');
+    if (!row.classList.contains('hidden')) el['disc-manual-input'].focus();
+}
+
+function manualFind() {
+    const v = el['disc-manual-input'].value;
+    if (!normalizeBarcode(v)) { showToast('Введите штрихкод'); return; }
+    setFoundByBarcode(v);
+    el['disc-manual-input'].value = '';
+    el['disc-manual-row'].classList.add('hidden');
+}
+
+/* ── Количество ───────────────────────────────────────────────────── */
+function clampQty(v) {
+    const n = Math.round(Number(v) || 0);
+    return Math.min(Math.max(1, n), disc.maxQty);
+}
+
+function setQty(v) {
+    if (!disc.found) return;
+    disc.found.kol = clampQty(v);
+    el['disc-qty'].value = disc.found.kol;
+    updateQtyButtons();
+}
+
+function updateQtyButtons() {
+    const q = disc.found ? disc.found.kol : 1;
+    const down = el['disc-found'].querySelector('[data-action="qty-down"]');
+    const up   = el['disc-found'].querySelector('[data-action="qty-up"]');
+    if (down) down.disabled = q <= 1;
+    if (up)   up.disabled   = q >= disc.maxQty;
+}
+
+/* ── Сохранение ───────────────────────────────────────────────────── */
 function saveDiscrepancy() {
-    const reason = el['discrepancyReason'].value.trim();
-    const z = currentProduct().zones[currentZoneIndex];
+    if (!canSave()) {
+        showToast(disc.reason ? 'Отсканируйте товар, который оказался вместо нужного'
+                              : 'Выберите причину', 3000);
+        return;
+    }
+    const z = currentProduct().zones[disc.zoneIndex];
     z.status  = 'not_confirmed';
-    z.comment = reason || 'Без комментария';
     z.checked = true;
+    z.reason  = disc.reason;
+    z.found   = disc.found ? { ...disc.found } : null;
+    z.comment = el['disc-comment'].value.trim();      // в отчёт пойдёт, только если непустой
+
     closeModal('discrepancyModal');
-    paintZone(currentZoneIndex, z);
+    paintZone(disc.zoneIndex, z);
     updateTotals();
     updateProgress();
     flushSave();                       // расхождение сохраняем немедленно
@@ -491,12 +688,15 @@ function showAllDoneModal() {
 }
 
 function exportDiscrepancies() {
-    // порядок отчёта повторяет порядок проверки, а не порядок вставки в Map
-    const seen = new Set();
-    const ordered = [...store.initialOrder, ...store.byId.keys()]
-        .filter(k => !seen.has(k) && seen.add(k))
+    /* Охват отчёта — строго текущий маршрут. `initialOrder` и есть
+       отфильтрованный срез, заданный пользователем на экране маршрута;
+       если фильтр не выбирался, туда попали все артикулы файла.
+       Порядок строк повторяет порядок проверки, а не порядок вставки в Map. */
+    const ordered = store.initialOrder
         .map(k => store.byId.get(k))
         .filter(Boolean);
+
+    if (!ordered.length) { showToast('Маршрут не запускался — выгружать нечего'); return; }
 
     const report = buildReport(ordered);
     if (!report.rows) { showToast('✅ Расхождений и незакрытых участков нет'); return; }
@@ -560,15 +760,40 @@ const ACTIONS = {
     'copy'          : copyBarcode,
     'zoom-open'     : () => toggleImageZoom(true),
     'zoom-close'    : () => toggleImageZoom(false),
-    'modal-cancel'  : () => closeModal('discrepancyModal'),
-    'modal-save'    : saveDiscrepancy,
     'alldone-close' : () => closeModal('allDoneModal'),
-    'alldone-export': () => { exportDiscrepancies(); closeModal('allDoneModal'); }
+    'alldone-export': () => { exportDiscrepancies(); closeModal('allDoneModal'); },
+
+    // окно «Не подтверждено»
+    'pick-reason'   : node => pickReason(node.dataset.reason),
+    'disc-left'     : discLeft,
+    'modal-save'    : saveDiscrepancy,
+    'disc-scan'     : doScan,
+    'disc-manual'   : toggleManualInput,
+    'disc-manual-find': manualFind,
+    'qty-up'        : () => setQty((disc.found ? disc.found.kol : 1) + 1),
+    'qty-down'      : () => setQty((disc.found ? disc.found.kol : 1) - 1),
+
+    // слой сканирования
+    'scan-close'    : cancelScan,
+    'scan-torch'    : toggleTorch,
+    'scan-manual'   : () => {
+        cancelScan();
+        el['disc-manual-row'].classList.remove('hidden');
+        setTimeout(() => el['disc-manual-input'].focus(), 50);
+    }
 };
 
 function init() {
     cacheDom();
     bindActions(ACTIONS);
+    buildReasonTiles();
+
+    // ручной ввод ШК: Enter вместо кнопки «Найти»
+    el['disc-manual-input'].addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); manualFind(); }
+    });
+    // правка количества с клавиатуры тоже должна попадать в диапазон
+    el['disc-qty'].addEventListener('change', e => setQty(e.target.value));
 
     onSaveError(() => {
         setStatusBadge('НЕ СОХРАНЯЕТСЯ', true);
@@ -588,7 +813,8 @@ function init() {
        с клавиатуры вообще */
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (isZoomOpen())                    toggleImageZoom(false);
+        if (isScannerOpen())                      cancelScan();
+        else if (isZoomOpen())                    toggleImageZoom(false);
         else if (isModalOpen('discrepancyModal')) closeModal('discrepancyModal');
         else if (isModalOpen('allDoneModal'))     closeModal('allDoneModal');
     });

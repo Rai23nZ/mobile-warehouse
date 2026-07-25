@@ -7,12 +7,26 @@
    расходящихся копий одного товара.
    ═══════════════════════════════════════════════════════════════════════ */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
-const LS_KEY      = 'wh_session_v2';
-const LS_META_KEY = 'wh_session_meta_v2';
-const LS_KEY_V1   = 'wh_session_v1';        // читаем только для миграции
+const LS_KEY      = 'wh_session_v3';
+const LS_META_KEY = 'wh_session_meta_v3';
+const LS_KEY_V2   = 'wh_session_v2';        // читаются только для миграции
+const LS_META_V2  = 'wh_session_meta_v2';
+const LS_KEY_V1   = 'wh_session_v1';
 const LS_META_V1  = 'wh_session_meta_v1';
+
+/* Поля зоны, добавленные схемой v3. Держим в одном месте, чтобы миграция
+   и разбор CSV заполняли зону одинаково.
+     reason  — идентификатор причины из js/reasons.js
+     found   — что оказалось вместо: { barcode, tovar, name, kol } | null
+     comment — свободный текст, в отчёт идёт только если непустой         */
+export function withV3Fields(zone) {
+    if (!('reason' in zone)) zone.reason = null;
+    if (!('found'  in zone)) zone.found  = null;
+    if (!('comment' in zone)) zone.comment = '';
+    return zone;
+}
 
 export const store = {
     byId        : new Map(),   // tovar -> Product (единственное место, где лежат данные)
@@ -93,7 +107,9 @@ export function serialize() {
 
 export function deserialize(p) {
     if (!p || !Array.isArray(p.products)) throw new Error('неизвестный формат данных');
-    store.byId = new Map(p.products.filter(x => x && x.tovar).map(x => [x.tovar, x]));
+    const products = p.products.filter(x => x && x.tovar);
+    products.forEach(prod => (prod.zones || []).forEach(withV3Fields));   // добор полей v3
+    store.byId = new Map(products.map(x => [x.tovar, x]));
     if (!store.byId.size) throw new Error('в файле нет ни одного товара');
 
     const known = k => store.byId.has(k);
@@ -130,7 +146,9 @@ export function migrateV1(payloadV1) {
     };
 }
 
-/* Приводит любой поддерживаемый формат (v2 / v1) к схеме v2 */
+/* Приводит любой поддерживаемый формат (v3 / v2 / v1) к текущей схеме.
+   Отличие v2 от v3 — только в наборе полей зоны, поэтому отдельная
+   функция миграции не нужна: недостающие поля добирает deserialize(). */
 export function normalizePayload(parsed) {
     if (!parsed) return null;
     return Array.isArray(parsed.products) ? parsed : migrateV1(parsed);
@@ -145,16 +163,18 @@ export function onSaveError(fn) { saveErrorHandler = fn; }
 export function onSaveRecovered(fn) { saveOkHandler = fn; }
 export const isStorageBroken = () => storageBroken;
 
+/* Ищем сохранённое от новой схемы к старым */
 export function loadStoredPayload() {
-    const v2 = localStorage.getItem(LS_KEY);
-    if (v2) return normalizePayload(JSON.parse(v2));
-    const v1 = localStorage.getItem(LS_KEY_V1);
-    if (v1) return normalizePayload(JSON.parse(v1));
+    for (const key of [LS_KEY, LS_KEY_V2, LS_KEY_V1]) {
+        const raw = localStorage.getItem(key);
+        if (raw) return normalizePayload(JSON.parse(raw));
+    }
     return null;
 }
 
 export function savedAtLabel(payload) {
     const meta = localStorage.getItem(LS_META_KEY)
+              || localStorage.getItem(LS_META_V2)
               || localStorage.getItem(LS_META_V1)
               || (payload && payload.savedAt);
     return meta ? new Date(meta).toLocaleString('ru-RU') : 'неизвестно';
@@ -190,14 +210,16 @@ export function flushSave() {
 }
 
 export function clearSaved() {
-    [LS_KEY, LS_META_KEY, LS_KEY_V1, LS_META_V1].forEach(k => localStorage.removeItem(k));
+    [LS_KEY, LS_META_KEY, LS_KEY_V2, LS_META_V2, LS_KEY_V1, LS_META_V1]
+        .forEach(k => localStorage.removeItem(k));
 }
 
-/* После успешного переноса в схему v2 старые ключи только занимают квоту,
-   а места в localStorage здесь и так в обрез. */
+/* После успешного переноса в текущую схему старые ключи только занимают
+   квоту, а места в localStorage здесь и так в обрез. */
 export function clearLegacy() {
     if (!localStorage.getItem(LS_KEY)) return;      // переноса не было — не трогаем
-    [LS_KEY_V1, LS_META_V1].forEach(k => localStorage.removeItem(k));
+    [LS_KEY_V2, LS_META_V2, LS_KEY_V1, LS_META_V1].forEach(k => localStorage.removeItem(k));
 }
 
-export const hasLegacy = () => !!localStorage.getItem(LS_KEY_V1);
+export const hasLegacy = () =>
+    !!(localStorage.getItem(LS_KEY_V2) || localStorage.getItem(LS_KEY_V1));

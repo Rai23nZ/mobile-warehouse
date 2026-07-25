@@ -38,6 +38,8 @@
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></symbol>
     <symbol id="i-cancel" viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></symbol>
     <symbol id="i-zoom-exit" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 4h5v2H6v3H4V4zm11 0h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm14 0h2v5h-5v-2h3v-3zM7 11h10v2H7z"/></symbol>
+    <symbol id="i-torch" viewBox="0 0 24 24"><path d="M6 2v6l4 4v10h4V12l4-4V2H6zm6 3.5c-.83 0-1.5-.67-1.5-1.5h3c0 .83-.67 1.5-1.5 1.5z"/></symbol>
 </svg>
 
 <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50 flex-shrink-0 px-1.5 py-2">
@@ -329,19 +331,130 @@
 <!-- ========= МОДАЛЬНЫЕ ОКНА ========= -->
 <div id="discrepancyModal" role="dialog" aria-modal="true" aria-labelledby="discrepancyTitle"
      class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-    <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in">
-        <h3 id="discrepancyTitle" class="text-lg font-bold text-slate-900 mb-1">Не подтверждено</h3>
-        <p id="modalProductName" class="text-xs text-slate-500 mb-4"></p>
-        <label for="discrepancyReason" class="block text-xs font-bold text-slate-400 uppercase mb-2">Причина</label>
-        <textarea id="discrepancyReason" rows="3"
-                  class="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 bg-slate-50 mb-4"
-                  placeholder="Например: пустая полка…"></textarea>
-        <div class="flex gap-3">
-            <button type="button" data-action="modal-cancel"
+    <div class="disc-card bg-white w-full max-w-sm rounded-2xl shadow-xl fade-in flex flex-col">
+
+        <!-- Шапка: что именно не подтверждается -->
+        <div class="px-5 pt-5 pb-3 border-b border-slate-100 flex-shrink-0">
+            <h3 id="discrepancyTitle" class="text-lg font-bold text-slate-900 leading-tight">Не подтверждено</h3>
+            <p id="modalProductName" class="text-xs text-slate-500 mt-1 line-clamp-2"></p>
+            <p id="disc-zone-info" class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-1"></p>
+        </div>
+
+        <div class="disc-body px-5 py-4 flex-1 min-h-0 overflow-y-auto custom-scroll">
+
+            <!-- ── ШАГ 1: причина ── -->
+            <div id="disc-step1">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Причина</div>
+                <div id="reason-tiles" class="reason-grid" role="radiogroup" aria-label="Причина неподтверждения">
+                    <!-- плитки строит js/app.js из js/reasons.js -->
+                </div>
+            </div>
+
+            <!-- ── ШАГ 2: что оказалось вместо (только для трёх причин) ── -->
+            <div id="disc-step2" class="hidden">
+                <div id="disc-chosen-reason" class="disc-chip"></div>
+
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 mt-3">
+                    Что оказалось вместо
+                </div>
+
+                <button type="button" data-action="disc-scan" id="disc-scan-btn"
+                        class="w-full bg-indigo-600 text-white font-bold rounded-xl py-3 flex items-center justify-center gap-2 hover:bg-indigo-700 transition active:scale-[0.98] text-sm">
+                    <svg class="icon icon-20" aria-hidden="true"><use href="#i-scan"></use></svg>
+                    Сканировать
+                </button>
+
+                <button type="button" data-action="disc-manual"
+                        class="w-full text-center text-xs text-indigo-600 font-semibold py-2 hover:text-indigo-800">
+                    ввести ШК вручную
+                </button>
+
+                <div id="disc-manual-row" class="hidden flex gap-2 mb-1">
+                    <label class="sr-only" for="disc-manual-input">Штрихкод</label>
+                    <input id="disc-manual-input" type="text" inputmode="numeric" autocomplete="off"
+                           placeholder="Штрихкод"
+                           class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500">
+                    <button type="button" data-action="disc-manual-find"
+                            class="bg-slate-200 text-slate-700 font-bold rounded-xl px-4 text-sm hover:bg-slate-300 transition">Найти</button>
+                </div>
+
+                <!-- Карточка найденного товара -->
+                <div id="disc-found" class="hidden mt-3 border border-slate-200 rounded-xl p-3">
+                    <div class="flex gap-3">
+                        <div class="found-photo flex-shrink-0">
+                            <img id="disc-found-img" alt="">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div id="disc-found-tovar" class="text-sm font-mono font-bold text-slate-900 truncate"></div>
+                            <div id="disc-found-name" class="text-xs text-slate-600 line-clamp-2 mt-0.5"></div>
+                            <div id="disc-found-bc" class="text-[10px] text-slate-400 font-mono mt-1"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Количество</span>
+                        <div class="qty-control">
+                            <button type="button" data-action="qty-down" aria-label="Уменьшить количество">−</button>
+                            <label class="sr-only" for="disc-qty">Количество</label>
+                            <input id="disc-qty" type="number" inputmode="numeric" min="1" value="1">
+                            <button type="button" data-action="qty-up" aria-label="Увеличить количество">+</button>
+                        </div>
+                    </div>
+                    <p id="disc-qty-hint" class="text-[10px] text-slate-400 mt-1.5 text-right"></p>
+                </div>
+
+                <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">
+                    Если на участке оказалось несколько разных товаров — отсканируйте один,
+                    остальные опишите в комментарии.
+                </p>
+            </div>
+
+            <!-- ── Комментарий: общий для обоих шагов ── -->
+            <div class="mt-5 pt-4 border-t border-slate-100">
+                <label for="disc-comment" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Комментарий (необязательно)
+                </label>
+                <textarea id="disc-comment" rows="2"
+                          class="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 bg-slate-50"
+                          placeholder="Например: рядом лежала шапка 000ABC1234, 1 шт"></textarea>
+            </div>
+        </div>
+
+        <!-- Кнопки -->
+        <div class="px-5 pb-5 pt-3 border-t border-slate-100 flex gap-3 flex-shrink-0">
+            <button type="button" id="disc-left-btn" data-action="disc-left"
                     class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Отмена</button>
-            <button type="button" data-action="modal-save"
+            <button type="button" id="disc-save-btn" data-action="modal-save"
                     class="flex-1 py-3 px-4 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-600 transition">Сохранить</button>
         </div>
+    </div>
+</div>
+
+<!-- ========= СЛОЙ СКАНИРОВАНИЯ ========= -->
+<div id="scannerOverlay" role="dialog" aria-modal="true" aria-label="Сканирование штрихкода"
+     class="fixed inset-0 z-[110] hidden flex-col bg-slate-900">
+    <video id="scanner-video" class="scanner-video" muted playsinline></video>
+
+    <div class="scanner-frame" aria-hidden="true"><span></span></div>
+
+    <div class="scanner-top">
+        <button type="button" data-action="scan-close" aria-label="Закрыть сканер"
+                class="scanner-btn">
+            <svg class="icon icon-24" aria-hidden="true"><use href="#i-cancel"></use></svg>
+        </button>
+        <button type="button" data-action="scan-torch" id="scanner-torch" aria-label="Фонарик"
+                class="scanner-btn hidden">
+            <svg class="icon icon-24" aria-hidden="true"><use href="#i-torch"></use></svg>
+        </button>
+    </div>
+
+    <div class="scanner-bottom">
+        <p id="scanner-hint" class="text-sm text-white/90 font-semibold text-center"></p>
+        <p id="scanner-error" class="hidden text-xs text-rose-200 bg-rose-900/60 rounded-xl p-3 text-center"></p>
+        <button type="button" data-action="scan-manual"
+                class="w-full bg-white/15 text-white font-bold rounded-xl py-3 text-sm backdrop-blur-sm">
+            Ввести штрихкод вручную
+        </button>
     </div>
 </div>
 

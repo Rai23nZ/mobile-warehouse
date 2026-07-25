@@ -5,6 +5,8 @@
    интерфейса.
    ═══════════════════════════════════════════════════════════════════════ */
 
+import { reasonLabel, NO_ARTICLE } from './reasons.js';
+
 /* Синонимы заголовков. Точное совпадение имеет приоритет над вхождением
    подстроки: иначе колонка «Наименование товара», стоящая раньше настоящей
    «Товар», перехватывала ключ по подстроке «товар». */
@@ -146,7 +148,10 @@ export function buildProducts(text) {
         if (zoneNumber && quantity > 0) {
             const existing = p.zones.find(z => z.uch === zoneNumber);
             if (existing) existing.kol += quantity;
-            else p.zones.push({ uch: zoneNumber, kol: quantity, checked: false, status: 'waiting', comment: '' });
+            else p.zones.push({
+                uch: zoneNumber, kol: quantity, checked: false, status: 'waiting',
+                reason: null, found: null, comment: ''
+            });
             /* План наращивается в обоих случаях. Раньше при дублирующихся
                строках на один участок количество попадало в зону, но не в
                план: факт никогда не сходился с планом, из-за чего у таких
@@ -194,9 +199,16 @@ export function csvRow(cells) { return cells.map(csvEscape).join(';'); }
    от «до этой позиции просто не дошли». */
 export const ZONE_STATUS_LABEL = { not_confirmed: 'РАСХОЖДЕНИЕ', waiting: 'НЕ ПРОВЕРЕНО' };
 
-const REPORT_HEAD = ['Товар', 'Наименование', 'ТМ', 'Направление', 'Пол',
-                     'Участок', 'Кол-во план', 'Статус', 'Причина'];
+const REPORT_HEAD = [
+    'Товар', 'Наименование', 'ТМ', 'Направление', 'Пол',
+    'Участок', 'Кол-во план', 'Статус', 'Причина',
+    'Факт: ШК', 'Факт: артикул', 'Факт: наименование', 'Факт: кол-во',
+    'Комментарий'
+];
 
+/* Подменный товар пишется в ТУ ЖЕ строку, что и неподтверждённый артикул,
+   а не отдельной записью. Если на участке оказалось несколько разных
+   товаров, отсканированным фиксируется один, остальные — в комментарии. */
 export function buildReport(products) {
     const lines = [csvRow(REPORT_HEAD)];
     let issues = 0, pending = 0;
@@ -206,8 +218,18 @@ export function buildReport(products) {
             const label = ZONE_STATUS_LABEL[z.status];
             if (!label) return;                        // confirmed в отчёт не идёт
             if (z.status === 'not_confirmed') issues++; else pending++;
-            lines.push(csvRow([p.tovar, p.name, p.tm, p.napr, p.pol,
-                               z.uch, z.kol, label, z.comment || '']));
+
+            const f = z.found || null;
+            lines.push(csvRow([
+                p.tovar, p.name, p.tm, p.napr, p.pol,
+                z.uch, z.kol, label,
+                z.status === 'not_confirmed' ? reasonLabel(z.reason) : '',
+                f ? f.barcode : '',
+                f ? (f.tovar || NO_ARTICLE) : '',     // артикул не нашёлся → «ШК нет»
+                f ? (f.name || '') : '',
+                f ? f.kol : '',
+                z.comment || ''
+            ]));
         });
     });
 
