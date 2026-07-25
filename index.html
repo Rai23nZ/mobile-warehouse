@@ -60,6 +60,8 @@
                 <svg class="icon icon-18" aria-hidden="true"><use href="#i-save"></use></svg>
                 <span class="hidden sm:inline">Снимок</span>
             </button>
+            <span id="sync-badge" role="status" aria-live="polite" title="Отправка результатов ведущему"
+                  class="hidden text-[10px] px-1.5 py-1 rounded-full font-medium whitespace-nowrap"></span>
             <span id="status-badge" role="status" aria-live="polite"
                   class="text-[10px] bg-indigo-500 px-1.5 py-1 rounded-full font-medium whitespace-nowrap">
                 Ожидание
@@ -93,6 +95,199 @@
             <p id="auth-error" role="alert"
                class="text-xs text-rose-600 font-semibold hidden">Неверный PIN-код!</p>
         </div>
+    </div>
+
+    <!-- ==== Экран 1б: выбор роли ==== -->
+    <div id="screen-role" class="space-y-3 fade-in hidden">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <h2 class="text-lg font-bold text-slate-900">Что делаем?</h2>
+
+            <button type="button" data-action="role-lead"
+                    class="w-full text-left bg-indigo-600 text-white rounded-xl p-4 hover:bg-indigo-700 transition active:scale-[0.98]">
+                <div class="font-bold text-sm">Создать проверку</div>
+                <div class="text-[11px] text-indigo-100 mt-0.5">Загрузить файл и раздать задания проверяющим</div>
+            </button>
+
+            <button type="button" data-action="role-join"
+                    class="w-full text-left bg-slate-100 text-slate-800 rounded-xl p-4 hover:bg-slate-200 transition active:scale-[0.98]">
+                <div class="font-bold text-sm">Присоединиться к проверке</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">По коду от ведущего — файл загружать не нужно</div>
+            </button>
+
+            <button type="button" data-action="role-solo"
+                    class="w-full text-left bg-slate-50 text-slate-600 rounded-xl p-4 border border-slate-200 hover:bg-slate-100 transition active:scale-[0.98]">
+                <div class="font-bold text-sm">Работать со своим файлом</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Без ведущего и синхронизации, как раньше</div>
+            </button>
+        </div>
+
+        <div id="role-resume" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center gap-2 text-amber-800">
+                <svg class="icon icon-24 text-amber-500 flex-shrink-0" aria-hidden="true"><use href="#i-history"></use></svg>
+                <div>
+                    <div class="font-bold text-sm">Есть незаконченная работа</div>
+                    <div class="text-xs" id="role-resume-info"></div>
+                </div>
+            </div>
+            <button type="button" data-action="role-resume"
+                    class="w-full bg-amber-500 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-amber-600 transition active:scale-[0.98]">
+                Продолжить
+            </button>
+        </div>
+    </div>
+
+    <!-- ==== Экран 1в: создание проверки (ведущий) ==== -->
+    <div id="screen-lead" class="space-y-4 fade-in hidden">
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <h2 class="text-lg font-bold text-slate-900">Новая проверка</h2>
+
+            <div id="lead-key-row" class="space-y-1.5">
+                <label for="lead-key" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ключ ведущего</label>
+                <input type="password" id="lead-key" autocomplete="off"
+                       class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500">
+                <p class="text-[10px] text-slate-400">Вводится один раз и запоминается на этом устройстве</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1.5">
+                    <label for="lead-store" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">№ магазина</label>
+                    <input type="text" id="lead-store" inputmode="numeric"
+                           class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="space-y-1.5">
+                    <label for="lead-network" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Сеть</label>
+                    <select id="lead-network" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500">
+                        <option>FunDay</option><option>O'Stin</option>
+                        <option>Demix</option><option>Sportmaster</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="space-y-1.5">
+                <label for="lead-name" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ваше ФИО</label>
+                <input type="text" id="lead-name" autocomplete="off" placeholder="Петров П.П."
+                       class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+
+            <div class="space-y-1.5">
+                <label for="lead-csv" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Файл инвентаризации</label>
+                <input type="file" id="lead-csv" accept=".csv,text/csv"
+                       class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl p-1 bg-slate-50">
+                <p id="lead-csv-info" class="text-[11px] text-slate-500"></p>
+            </div>
+        </div>
+
+        <!-- Режим распределения -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Как делим объём</div>
+            <div class="grid grid-cols-2 gap-2">
+                <label class="net-option">
+                    <input type="radio" name="lead-mode" value="napr" class="w-4 h-4" checked>
+                    <span class="text-xs font-bold text-slate-700">По направлению</span>
+                </label>
+                <label class="net-option">
+                    <input type="radio" name="lead-mode" value="uch" class="w-4 h-4">
+                    <span class="text-xs font-bold text-slate-700">По участкам</span>
+                </label>
+            </div>
+            <p id="lead-mode-hint" class="text-[10px] text-slate-400 leading-relaxed"></p>
+        </div>
+
+        <!-- Проверяющие -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <div class="flex justify-between items-center">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Проверяющие</div>
+                <button type="button" data-action="lead-add"
+                        class="text-xs font-bold text-indigo-600 hover:text-indigo-800">+ добавить</button>
+            </div>
+            <div id="lead-checkers" class="space-y-2"></div>
+            <div id="lead-coverage" class="space-y-1.5"></div>
+        </div>
+
+        <div class="flex gap-2">
+            <button type="button" data-action="lead-back"
+                    class="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Назад</button>
+            <button type="button" data-action="lead-create" id="lead-create-btn"
+                    class="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition active:scale-[0.98]">Создать</button>
+        </div>
+    </div>
+
+    <!-- ==== Экран 1г: сводка ведущего ==== -->
+    <div id="screen-board" class="space-y-4 fade-in hidden">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 text-center space-y-2">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Код проверки</div>
+            <div id="board-code" class="text-3xl font-black tracking-widest text-slate-900 font-mono"></div>
+            <div id="board-store" class="text-xs text-slate-500"></div>
+            <div id="board-qr" class="flex justify-center pt-2"></div>
+            <p class="text-[10px] text-slate-400">Проверяющие вводят код и № магазина либо считывают этот QR</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-2">
+            <div class="flex justify-between items-center">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ход проверки</div>
+                <button type="button" data-action="board-refresh"
+                        class="text-xs font-bold text-indigo-600 hover:text-indigo-800">обновить</button>
+            </div>
+            <div id="board-list" class="space-y-2"></div>
+            <p id="board-updated" class="text-[10px] text-slate-400 text-right"></p>
+        </div>
+
+        <div class="space-y-2">
+            <button type="button" data-action="board-mywork"
+                    class="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition active:scale-[0.98]">
+                К своей проверке
+            </button>
+            <button type="button" data-action="board-finish"
+                    class="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2">
+                <svg class="icon icon-20" aria-hidden="true"><use href="#i-download"></use></svg>
+                Завершить и скачать отчёт
+            </button>
+        </div>
+    </div>
+
+    <!-- ==== Экран 1д: присоединение ==== -->
+    <div id="screen-join" class="space-y-4 fade-in hidden">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <h2 class="text-lg font-bold text-slate-900">Присоединиться к проверке</h2>
+
+            <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1.5">
+                    <label for="join-store" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">№ магазина</label>
+                    <input type="text" id="join-store" inputmode="numeric"
+                           class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="space-y-1.5">
+                    <label for="join-code" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Код</label>
+                    <input type="text" id="join-code" autocomplete="off" maxlength="6"
+                           class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono uppercase tracking-widest focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button type="button" data-action="join-scan"
+                        class="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-200 transition flex items-center justify-center gap-2">
+                    <svg class="icon icon-20" aria-hidden="true"><use href="#i-scan"></use></svg> Считать QR
+                </button>
+                <button type="button" data-action="join-find"
+                        class="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition">Найти</button>
+            </div>
+
+            <p id="join-error" role="alert" class="hidden text-xs text-rose-600 font-semibold"></p>
+        </div>
+
+        <div id="join-pick" class="hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <div id="join-session-info" class="text-xs text-slate-500"></div>
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Выберите себя</div>
+            <div id="join-list" class="space-y-2"></div>
+            <button type="button" data-action="join-start" id="join-start-btn"
+                    class="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition active:scale-[0.98]">
+                Начать проверку
+            </button>
+        </div>
+
+        <button type="button" data-action="join-back"
+                class="w-full py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Назад</button>
     </div>
 
     <!-- ==== Экран 2: загрузка данных ==== -->

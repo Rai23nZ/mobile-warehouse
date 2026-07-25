@@ -7,24 +7,30 @@
    расходящихся копий одного товара.
    ═══════════════════════════════════════════════════════════════════════ */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
-const LS_KEY      = 'wh_session_v3';
-const LS_META_KEY = 'wh_session_meta_v3';
-const LS_KEY_V2   = 'wh_session_v2';        // читаются только для миграции
-const LS_META_V2  = 'wh_session_meta_v2';
-const LS_KEY_V1   = 'wh_session_v1';
-const LS_META_V1  = 'wh_session_meta_v1';
+const LS_KEY      = 'wh_session_v4';
+const LS_META_KEY = 'wh_session_meta_v4';
 
-/* Поля зоны, добавленные схемой v3. Держим в одном месте, чтобы миграция
-   и разбор CSV заполняли зону одинаково.
-     reason  — идентификатор причины из js/reasons.js
-     found   — что оказалось вместо: { barcode, tovar, name, kol } | null
-     comment — свободный текст, в отчёт идёт только если непустой         */
-export function withV3Fields(zone) {
-    if (!('reason' in zone)) zone.reason = null;
-    if (!('found'  in zone)) zone.found  = null;
+/* Ключи прежних схем — читаются только для переноса данных */
+const LEGACY_KEYS  = ['wh_session_v3', 'wh_session_v2', 'wh_session_v1'];
+const LEGACY_METAS = ['wh_session_meta_v3', 'wh_session_meta_v2', 'wh_session_meta_v1'];
+
+/* Поля зоны сверх исходных uch/kol/checked/status:
+     reason  — идентификатор причины из js/reasons.js          (схема v3)
+     found   — что оказалось вместо: {barcode,tovar,name,kol}  (схема v3)
+     comment — свободный текст, в отчёт идёт если непустой      (схема v3)
+     at      — когда участок отмечен                            (схема v4)
+
+   `at` нужен для сведения работы нескольких проверяющих и для анализа
+   затраченного времени. Держим заполнение в одном месте, чтобы разбор
+   CSV, перенос старых сессий и приход пула с сервера давали одинаковую
+   форму зоны. */
+export function withZoneFields(zone) {
+    if (!('reason'  in zone)) zone.reason  = null;
+    if (!('found'   in zone)) zone.found   = null;
     if (!('comment' in zone)) zone.comment = '';
+    if (!('at'      in zone)) zone.at      = null;
     return zone;
 }
 
@@ -33,8 +39,21 @@ export const store = {
     order       : [],          // ключи активного списка (сужается на «втором круге»)
     initialOrder: [],          // ключи стартового среза — знаменатель прогресса
     currentIndex: 0,
-    network     : 'FunDay'
+    network     : 'FunDay',
+
+    /* Данные проверки, когда работа идёт по наряду от ведущего.
+       null — приложение работает по-старому, от своего CSV.
+       Токен ведущего сюда НЕ кладётся: он хранится отдельно в sync.js,
+       иначе уехал бы вместе с выгруженным снимком сессии. */
+    session: null              // { code, store, network, mode, checker, idx, isLead, leadName }
 };
+
+export const inSession   = () => !!store.session;
+export const zoneModeUch = () => !!store.session && store.session.mode === 'uch';
+
+export function setSession(info) {
+    store.session = info ? { ...info } : null;
+}
 
 export const allProducts    = ()  => [...store.byId.values()];
 export const productAt      = (i) => store.byId.get(store.order[i]);
@@ -101,14 +120,15 @@ export function serialize() {
         order       : store.order,        // дальше только ключи
         initialOrder: store.initialOrder,
         currentIndex: store.currentIndex,
-        network     : store.network
+        network     : store.network,
+        session     : store.session        // токена ведущего здесь нет — см. store.session
     };
 }
 
 export function deserialize(p) {
     if (!p || !Array.isArray(p.products)) throw new Error('неизвестный формат данных');
     const products = p.products.filter(x => x && x.tovar);
-    products.forEach(prod => (prod.zones || []).forEach(withV3Fields));   // добор полей v3
+    products.forEach(prod => (prod.zones || []).forEach(withZoneFields));  // добор полей v3/v4
     store.byId = new Map(products.map(x => [x.tovar, x]));
     if (!store.byId.size) throw new Error('в файле нет ни одного товара');
 
@@ -119,6 +139,20 @@ export function deserialize(p) {
     if (!store.initialOrder.length) store.initialOrder = [...store.order];
     store.currentIndex = clampIndex(p.currentIndex);
     store.network      = p.network || 'FunDay';
+    store.session      = p.session || null;
+}
+
+/* Пул, пришедший с сервера: товары уже отобраны под наряд, план в них
+   пересчитан по своим участкам (см. js/assign.js). */
+export function setPoolFromServer(pool, session) {
+    pool.forEach(p => (p.zones || []).forEach(withZoneFields));
+    store.byId = new Map(pool.map(p => [p.tovar, p]));
+    const keys = pool.map(p => p.tovar);
+    store.order        = keys;
+    store.initialOrder = [...keys];
+    store.currentIndex = 0;
+    store.network      = session.network || store.network;
+    store.session      = { ...session };
 }
 
 /* Миграция со схемы v1. Там три массива (rawProducts / filteredProducts /
@@ -165,7 +199,7 @@ export const isStorageBroken = () => storageBroken;
 
 /* Ищем сохранённое от новой схемы к старым */
 export function loadStoredPayload() {
-    for (const key of [LS_KEY, LS_KEY_V2, LS_KEY_V1]) {
+    for (const key of [LS_KEY, ...LEGACY_KEYS]) {
         const raw = localStorage.getItem(key);
         if (raw) return normalizePayload(JSON.parse(raw));
     }
@@ -173,11 +207,13 @@ export function loadStoredPayload() {
 }
 
 export function savedAtLabel(payload) {
-    const meta = localStorage.getItem(LS_META_KEY)
-              || localStorage.getItem(LS_META_V2)
-              || localStorage.getItem(LS_META_V1)
-              || (payload && payload.savedAt);
-    return meta ? new Date(meta).toLocaleString('ru-RU') : 'неизвестно';
+    for (const key of [LS_META_KEY, ...LEGACY_METAS]) {
+        const meta = localStorage.getItem(key);
+        if (meta) return new Date(meta).toLocaleString('ru-RU');
+    }
+    return payload && payload.savedAt
+        ? new Date(payload.savedAt).toLocaleString('ru-RU')
+        : 'неизвестно';
 }
 
 export function autoSave() {
@@ -210,7 +246,7 @@ export function flushSave() {
 }
 
 export function clearSaved() {
-    [LS_KEY, LS_META_KEY, LS_KEY_V2, LS_META_V2, LS_KEY_V1, LS_META_V1]
+    [LS_KEY, LS_META_KEY, ...LEGACY_KEYS, ...LEGACY_METAS]
         .forEach(k => localStorage.removeItem(k));
 }
 
@@ -218,8 +254,7 @@ export function clearSaved() {
    квоту, а места в localStorage здесь и так в обрез. */
 export function clearLegacy() {
     if (!localStorage.getItem(LS_KEY)) return;      // переноса не было — не трогаем
-    [LS_KEY_V2, LS_META_V2, LS_KEY_V1, LS_META_V1].forEach(k => localStorage.removeItem(k));
+    [...LEGACY_KEYS, ...LEGACY_METAS].forEach(k => localStorage.removeItem(k));
 }
 
-export const hasLegacy = () =>
-    !!(localStorage.getItem(LS_KEY_V2) || localStorage.getItem(LS_KEY_V1));
+export const hasLegacy = () => LEGACY_KEYS.some(k => !!localStorage.getItem(k));

@@ -10,8 +10,25 @@
 export const el = {};
 
 const CACHED_IDS = [
-    'screen-auth', 'screen-upload', 'screen-filter', 'screen-work', 'footer-work',
-    'auth-password', 'auth-error',
+    'screen-auth', 'screen-role', 'screen-lead', 'screen-board', 'screen-join',
+    'screen-upload', 'screen-filter', 'screen-work', 'footer-work',
+    'auth-password', 'auth-error', 'sync-badge',
+
+    // выбор роли
+    'role-resume', 'role-resume-info',
+
+    // создание проверки
+    'lead-key-row', 'lead-key', 'lead-store', 'lead-network', 'lead-name',
+    'lead-csv', 'lead-csv-info', 'lead-mode-hint', 'lead-checkers',
+    'lead-coverage', 'lead-create-btn',
+
+    // сводка ведущего
+    'board-code', 'board-store', 'board-qr', 'board-list', 'board-updated',
+
+    // присоединение
+    'join-store', 'join-code', 'join-error', 'join-pick',
+    'join-session-info', 'join-list', 'join-start-btn',
+
     'csv-file', 'session-file', 'loading-msg', 'error-card', 'error-text', 'import-summary',
     'restore-banner', 'restore-info',
     'filter-napravlenie', 'filter-tm', 'filter-pol',
@@ -43,8 +60,14 @@ export function cacheDom() {
 /* ── Экраны ────────────────────────────────────────────────────────────
    Раньше переключение было россыпью classList.add/remove в пяти местах,
    и состояние экрана существовало только в DOM. */
-const SCREENS = ['auth', 'upload', 'filter', 'work'];
-const BADGE_BY_SCREEN = { work: 'Проверка', filter: 'Данные готовы' };
+const SCREENS = ['auth', 'role', 'lead', 'board', 'join', 'upload', 'filter', 'work'];
+const BADGE_BY_SCREEN = {
+    work : 'Проверка',
+    filter: 'Данные готовы',
+    lead : 'Настройка',
+    board: 'Ведущий',
+    join : 'Подключение'
+};
 
 let currentScreen = 'auth';
 export const getScreen = () => currentScreen;

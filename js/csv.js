@@ -150,7 +150,7 @@ export function buildProducts(text) {
             if (existing) existing.kol += quantity;
             else p.zones.push({
                 uch: zoneNumber, kol: quantity, checked: false, status: 'waiting',
-                reason: null, found: null, comment: ''
+                reason: null, found: null, comment: '', at: null
             });
             /* План наращивается в обоих случаях. Раньше при дублирующихся
                строках на один участок количество попадало в зону, но не в

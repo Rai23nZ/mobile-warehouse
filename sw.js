@@ -9,7 +9,7 @@
    При изменении файлов оболочки поднимать SHELL_VERSION.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const SHELL_VERSION = 'shell-v5';
+const SHELL_VERSION = 'shell-v7';
 const IMG_CACHE     = 'imgs-v1';
 const DATA_CACHE    = 'data-v1';
 const MAX_IMAGES    = 1500;          // мягкий предел, чтобы кэш не рос бесконечно
@@ -26,7 +26,11 @@ const SHELL_ASSETS = [
     './js/reasons.js',
     './js/catalog.js',
     './js/scanner.js',
+    './js/assign.js',
+    './js/sync.js',
+    './js/lead.js',
     './vendor/zxing.min.js',
+    './vendor/qrcode.min.js',
     './img/empty.jpg',
     './icon-192.png',
     './icon-512.png'
@@ -50,8 +54,19 @@ self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         const keys = await caches.keys();
         const keep = [SHELL_VERSION, IMG_CACHE, DATA_CACHE];
-        await Promise.all(keys.filter(k => !keep.includes(k)).map(k => caches.delete(k)));
+        const stale = keys.filter(k => !keep.includes(k));
+        await Promise.all(stale.map(k => caches.delete(k)));
         await self.clients.claim();
+
+        /* Страница, открытая до обновления, уже держит в памяти СТАРЫЕ модули,
+           хотя index.html мог прийти новый (он раздаётся «сначала сеть»).
+           Такое сочетание ломается непредсказуемо, поэтому просим клиентов
+           перезагрузиться. Условие про stale отсекает первую установку:
+           там обновлять нечего. */
+        if (stale.length) {
+            const clients = await self.clients.matchAll({ type: 'window' });
+            clients.forEach(c => c.postMessage({ type: 'sw-updated', version: SHELL_VERSION }));
+        }
     })());
 });
 

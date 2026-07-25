@@ -8,8 +8,15 @@ import {
     setProducts, setOrder, clampIndex,
     serialize, deserialize, normalizePayload, loadStoredPayload, savedAtLabel,
     autoSave, scheduleSave, flushSave, clearSaved, clearLegacy, hasLegacy,
-    onSaveError, onSaveRecovered, isStorageBroken
+    onSaveError, onSaveRecovered, isStorageBroken,
+    inSession, zoneModeUch, setSession, setPoolFromServer
 } from './store.js';
+
+import {
+    enqueueZone, initQueue, onSyncState, refreshSyncState,
+    flushQueue, resetQueue, sendAssignmentState
+} from './sync.js';
+import * as lead from './lead.js';
 
 import {
     buildProducts, buildReport, compareProductsForRoute, HEADER_TITLES
@@ -31,6 +38,25 @@ import {
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
         .catch(err => console.warn('Ошибка регистрации Service Worker:', err));
+
+    /* Обновление оболочки: страница могла загрузиться с новым index.html,
+       но со старыми модулями из кэша прежней версии. Перезагружаемся, чтобы
+       код и разметка снова были одной версии. Флаг в sessionStorage не даёт
+       зациклиться, если что-то пойдёт не так. */
+    navigator.serviceWorker.addEventListener('message', ev => {
+        if (!ev.data || ev.data.type !== 'sw-updated') return;
+        const seen = sessionStorage.getItem('wh_sw_reloaded');
+        if (seen === ev.data.version) return;
+        sessionStorage.setItem('wh_sw_reloaded', ev.data.version);
+
+        /* Посреди проверки не дёргаем: сначала дописываем несохранённое */
+        if (getScreen() === 'work') {
+            flushSave();
+            showToast('Установлено обновление. Перезагрузите приложение, когда будет удобно.', 8000);
+            return;
+        }
+        location.reload();
+    });
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -64,13 +90,58 @@ async function checkAuth() {
 }
 
 /* ── Переходы между экранами ──────────────────────────────────────── */
+
+/* Кнопка «домой». Если работа шла по наряду от ведущего, уводим на выбор
+   роли: возвращаться к загрузке своего файла посреди смены незачем. */
 function goToUploadScreen(skipConfirm = false) {
     if (!skipConfirm && getScreen() === 'work' &&
         !confirm('Вернуться на стартовый экран? Текущий прогресс проверки будет сохранён.')) return;
     flushSave();
+    if (inSession()) flushQueue();
+
+    if (lead.boardContext()) { lead.showBoard(lead.boardContext().code, lead.boardContext()); return; }
+    if (inSession()) { lead.showRoleScreen(resumeLabel()); return; }
     showScreen('upload');
     setStatusBadge(defaultBadgeFor('upload'));
     checkRestorable();
+}
+
+/* Подпись для баннера «есть незаконченная работа» на экране выбора роли */
+function resumeLabel() {
+    try {
+        const p = loadStoredPayload();
+        if (!p) return null;
+        const who = p.session ? `${p.session.checker}, магазин ${p.session.store}` : 'свой файл';
+        return `${who} · ${p.products.length} товаров · ${savedAtLabel(p)}`;
+    } catch (e) { return null; }
+}
+
+/* Пул пришёл с сервера — входим в рабочий экран по наряду */
+function onPoolReady(pool, session) {
+    setPoolFromServer(pool, session);
+    autoSave();
+    refreshSyncState();          // теперь inSession() истинно — индикатор оживает
+    goToWorkScreen();
+    showToast(`Наряд «${session.checker}»: ${pool.length} артикулов`, 3000);
+}
+
+/* ── Индикатор отправки ───────────────────────────────────────────── */
+function paintSyncBadge(s) {
+    const b = el['sync-badge'];
+    if (!b) return;
+    if (!inSession()) { b.classList.add('hidden'); return; }
+    b.classList.remove('hidden');
+
+    let text, cls;
+    if (!s.online)       { text = 'нет сети';            cls = 'bg-amber-500'; }
+    else if (s.sending)  { text = 'отправка…';           cls = 'bg-indigo-400'; }
+    else if (s.pending)  { text = 'ждёт ' + s.pending;   cls = 'bg-amber-500'; }
+    else if (s.error)    { text = 'сбой отправки';       cls = 'bg-rose-600'; }
+    else                 { text = 'отправлено';          cls = 'bg-emerald-600'; }
+
+    b.textContent = text;
+    b.className = 'text-[10px] px-1.5 py-1 rounded-full font-medium whitespace-nowrap ' + cls;
+    b.title = s.error || 'Отправка результатов ведущему';
 }
 
 function goToWorkScreen() {
@@ -401,17 +472,20 @@ function paintZone(i, zone) {
 }
 
 function toggleZone(i) {
-    const z = currentProduct().zones[i];
+    const p = currentProduct();
+    const z = p.zones[i];
     z.checked = !z.checked;
     z.status  = z.checked ? 'confirmed' : 'waiting';
     /* Снятие отметки возвращает участок в исходное состояние: иначе
        причина и найденный товар от прежнего расхождения остались бы
        висеть на подтверждённом участке и попали бы в отчёт. */
     if (!z.checked) { z.comment = ''; z.reason = null; z.found = null; }
+    z.at = new Date().toISOString();
     paintZone(i, z);
     updateTotals();
     updateProgress();
     scheduleSave();
+    pushZone(p, z);
 }
 
 function updateTotals() {
@@ -664,18 +738,28 @@ function saveDiscrepancy() {
                               : 'Выберите причину', 3000);
         return;
     }
-    const z = currentProduct().zones[disc.zoneIndex];
+    const p = currentProduct();
+    const z = p.zones[disc.zoneIndex];
     z.status  = 'not_confirmed';
     z.checked = true;
     z.reason  = disc.reason;
     z.found   = disc.found ? { ...disc.found } : null;
     z.comment = el['disc-comment'].value.trim();      // в отчёт пойдёт, только если непустой
+    z.at      = new Date().toISOString();
 
     closeModal('discrepancyModal');
     paintZone(disc.zoneIndex, z);
     updateTotals();
     updateProgress();
     flushSave();                       // расхождение сохраняем немедленно
+    pushZone(p, z);
+}
+
+/* Отметка уходит на сервер, если работа идёт по наряду от ведущего.
+   Вне проверки ничего не отправляется — приложение работает как раньше. */
+function pushZone(product, zone) {
+    if (!inSession()) return;
+    enqueueZone(product.tovar, zone);
 }
 
 /* ── Завершение и отчёт ───────────────────────────────────────────── */
@@ -780,8 +864,82 @@ const ACTIONS = {
         cancelScan();
         el['disc-manual-row'].classList.remove('hidden');
         setTimeout(() => el['disc-manual-input'].focus(), 50);
+    },
+
+    // выбор роли
+    'role-lead'   : () => lead.showLeadScreen(),
+    'role-join'   : () => lead.showJoinScreen(),
+    'role-solo'   : () => { showScreen('upload'); setStatusBadge(defaultBadgeFor('upload')); checkRestorable(); },
+    'role-resume' : () => restoreSession(),
+
+    // создание проверки
+    'lead-add'    : () => lead.addChecker(),
+    'lead-del'    : node => lead.removeChecker(Number(node.dataset.checker)),
+    'lead-back'   : () => lead.showRoleScreen(resumeLabel()),
+    'lead-create' : () => lead.createSession(),
+
+    // сводка ведущего
+    'board-refresh': () => lead.refreshBoard(),
+    'board-mywork' : () => lead.leadGoToOwnWork(),
+    'board-finish' : finishAndErase,
+
+    // присоединение
+    'join-find' : () => lead.findSession(),
+    'join-start': () => lead.startJoined(),
+    'join-back' : () => lead.showRoleScreen(resumeLabel()),
+    'join-scan' : async () => {
+        const code = await scanBarcode();
+        if (code) lead.applyScannedJoin(code);
     }
 };
+
+/* ── Завершение смены ─────────────────────────────────────────────────
+   Отчёт сначала оказывается на устройстве, и лишь потом отдельным
+   подтверждением стираются данные: истории не ведётся, вернуть нечем. */
+async function finishAndErase() {
+    const ctx = lead.boardContext();
+    if (!ctx) return;
+
+    const notDone = (ctx.assignments || []).filter(a => a.state !== 'done');
+    if (notDone.length && !confirm(
+        `Не отметились как сдавшие: ${notDone.map(a => a.checker).join(', ')}.\n` +
+        'Их результаты попадут в отчёт в том виде, в каком успели дойти. Продолжить?')) return;
+
+    try {
+        showToast('Сборка отчёта…', 6000);
+        const res = await lead.finishSession(msg => showToast(msg, 6000));
+        if (!res) return;
+
+        downloadBlob(res.reportCsv,   'text/csv;charset=utf-8;', `отчёт_${res.stamp}_${stamp()}.csv`);
+        downloadBlob(res.coverageCsv, 'text/csv;charset=utf-8;', `покрытие_${res.stamp}_${stamp()}.csv`);
+
+        const s = res.stat;
+        const ok = confirm(
+            `Отчёт скачан.\n\n` +
+            `Участков всего: ${s.total}\n` +
+            `Подтверждено: ${s.done}\n` +
+            `Расхождений: ${s.issues}\n` +
+            `Не проверено: ${s.pending}\n\n` +
+            `Удалить данные проверки с сервера? Отменить это будет нельзя.`
+        );
+        if (!ok) { showToast('Данные оставлены на сервере', 3000); return; }
+
+        await lead.eraseSession();
+        resetQueue();
+        setSession(null);
+        clearSaved();
+        showToast('Проверка завершена, данные стёрты', 3000);
+        lead.showRoleScreen(null);
+    } catch (e) {
+        showToast('Не удалось завершить: ' + e.message, 6000);
+    }
+}
+
+function onLeadFieldChange(e) {
+    const node = e.target;
+    if (!node.dataset || node.dataset.checker === undefined) return;
+    lead.updateChecker(Number(node.dataset.checker), node.dataset.field, node.value);
+}
 
 function init() {
     cacheDom();
@@ -800,8 +958,23 @@ function init() {
         showToast('⚠️ Память устройства заполнена — прогресс НЕ сохраняется. Сделайте снимок сессии!', 8000);
     });
     onSaveRecovered(() => setStatusBadge(defaultBadgeFor(getScreen())));
+    onSyncState(paintSyncBadge);
+    lead.setHooks({ onPoolReady });
 
-    showScreen(sessionStorage.getItem('wh_auth_passed') === 'true' ? 'upload' : 'auth');
+    /* Поля проверяющих создаются на лету, поэтому слушаем всплытие,
+       а не вешаем обработчики на каждый элемент */
+    el['lead-checkers'].addEventListener('input',  onLeadFieldChange);
+    el['lead-checkers'].addEventListener('change', onLeadFieldChange);
+    el['screen-lead'].addEventListener('change', e => {
+        if (e.target.name === 'lead-mode') lead.setMode(e.target.value);
+    });
+    el['lead-csv'].addEventListener('change', lead.handleLeadCsv);
+    el['join-code'].addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); lead.findSession(); }
+    });
+
+    if (sessionStorage.getItem('wh_auth_passed') === 'true') lead.showRoleScreen(resumeLabel());
+    else showScreen('auth');
 
     el['auth-password'].addEventListener('keydown', e => {
         if (e.key === 'Enter') checkAuth();
