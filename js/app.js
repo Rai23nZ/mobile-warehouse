@@ -86,7 +86,7 @@ async function checkAuth() {
     if (await sha256(input) === AUTH_HASH) {
         sessionStorage.setItem('wh_auth_passed', 'true');
         el['auth-error'].classList.add('hidden');
-        goToUploadScreen(true);
+        goHome(true);
     } else {
         el['auth-error'].classList.remove('hidden');
         el['auth-password'].value = '';
@@ -96,16 +96,26 @@ async function checkAuth() {
 
 /* ── Переходы между экранами ──────────────────────────────────────── */
 
-/* Кнопка «домой». Если работа шла по наряду от ведущего, уводим на выбор
-   роли: возвращаться к загрузке своего файла посреди смены незачем. */
-function goToUploadScreen(skipConfirm = false) {
+/* Начальный экран — выбор роли. Сюда ведут все входы: ПИН-код, кнопка
+   «домой», возврат с любого экрана. Экран загрузки своего файла больше не
+   является стартовым: на него попадают только осознанным выбором
+   «Работать со своим файлом».
+
+   Исключение — ведущий с активной проверкой: ему возвращаться к выбору
+   роли незачем, он попадает на свою сводку. */
+function goHome(skipConfirm = false) {
     if (!skipConfirm && getScreen() === 'work' &&
         !confirm('Вернуться на стартовый экран? Текущий прогресс проверки будет сохранён.')) return;
     flushSave();
     if (inSession()) flushQueue();
 
-    if (lead.boardContext()) { lead.showBoard(lead.boardContext().code, lead.boardContext()); return; }
-    if (inSession()) { lead.showRoleScreen(resumeLabel()); return; }
+    const board = lead.boardContext();
+    if (board) { lead.showBoard(board.code, board); return; }
+    lead.showRoleScreen(resumeLabel());
+}
+
+/* Экран загрузки своего файла — теперь отдельный режим, а не стартовый */
+function goToOwnFileScreen() {
     showScreen('upload');
     setStatusBadge(defaultBadgeFor('upload'));
     checkRestorable();
@@ -813,7 +823,7 @@ function initSwipe() {
    ══════════════════════════════════════════════════════════════════════ */
 const ACTIONS = {
     'auth'          : checkAuth,
-    'home'          : () => goToUploadScreen(),
+    'home'          : () => goHome(),
     'snapshot'      : saveSessionSnapshot,
     'restore'       : restoreSession,
     'clear-session' : clearSavedSession,
@@ -850,7 +860,7 @@ const ACTIONS = {
     'app-update'  : forceUpdate,
     'role-lead'   : () => lead.showLeadScreen(),
     'role-join'   : () => lead.showJoinScreen(),
-    'role-solo'   : () => { showScreen('upload'); setStatusBadge(defaultBadgeFor('upload')); checkRestorable(); },
+    'role-solo'   : goToOwnFileScreen,
     'role-resume' : () => restoreSession(),
 
     // создание проверки
