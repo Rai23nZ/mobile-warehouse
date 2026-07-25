@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Контрольная проверка</title>
 
     <!-- PWA‑манифест -->
@@ -15,151 +15,100 @@
     <meta name="apple-mobile-web-app-title" content="Контрольная проверка">
     <link rel="apple-touch-icon" href="icon-512.png">
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Локальные стили: ни одного внешнего запроса, приложение работает офлайн -->
+    <link rel="stylesheet" href="css/app.css">
 
-    <style>
-        /* ── ГЛОБАЛЬНЫЕ СТИЛИ ── */
-        *, *::before, *::after { box-sizing: border-box; }                /* ← исправление */
-        html, body, #screen-work { overflow-x: hidden; }                  /* ← исправление */
-
-        .material-icons.md-24 { font-size: 24px; }
-        .material-icons.md-20 { font-size: 20px; }
-        .fade-in { animation: fadeIn 0.2s ease-out; }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ── КОМПАКТНЫЙ РЕЖИМ ДЛЯ РАБОЧЕГО ЭКРАНА ── */
-        .work-zone-row     { padding: 10px 14px; }
-        .work-nav-inner    { padding: 10px 14px; gap: 8px; }
-        .work-nav-btn      { padding: 10px 14px; }
-
-        #view-image {
-            cursor: zoom-in;
-            transition: transform 0.2s ease;
-            flex: 0 0 auto;
-            width: 24%;                 /* ← исправление (было w-1/4) */
-            max-width: 80px;
-        }
-        #view-image:active { transform: scale(0.96); }
-
-        /* ЭФФЕКТ УВЕЛИЧЕНИЯ КАРТИНКИ */
-        .img-zoom-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(15, 23, 42, 0.9);
-            z-index: 9999; display: flex; align-items: center; justify-content: center;
-            opacity: 0; pointer-events: none;
-            transition: opacity 0.25s ease-in-out;
-            backdrop-filter: blur(4px);
-        }
-        .img-zoom-overlay.active { opacity: 1; pointer-events: auto; }
-        .img-zoom-overlay img {
-            max-width: 95vw; max-height: 85vh; object-fit: contain;
-            border-radius: 16px; transform: scale(0.9);
-            transition: transform 0.25s ease-in-out;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        .img-zoom-overlay.active img { transform: scale(1); }
-
-        html, body { overscroll-behavior-y: none; }
-
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
-
-        /* ── ДРУГИЕ ПРАВКИ ДЛЯ ОТКРЫТИЯ ГОРИЗОНТАЛЬНОГО СКРОЛЛА ── */
-        .flex.gap-3 { min-width: 0; }                                   /* ← исправление */
-        #view-image + div { flex: 1 1 0; min-width: 0; }                /* ← исправление */
-        #zones-list   { min-width: 0; }                                 /* ← исправление */
-        #view-name {
-            display: -webkit-box;
-            -webkit-line-clamp: 4;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis; /* Свойство white-space: nowrap УДАЛЕНО */ 
-            min-width: 0; 
-        }
-        .bg-white.rounded-2xl.shadow-sm.border {
-            max-width:100%; min-width:0;                               /* ← исправление */
-        }
-    </style>
+    <!-- Логика: ES-модули, вся разметка ниже свободна от исполняемого кода -->
+    <script type="module" src="js/app.js"></script>
 </head>
 
 <body class="bg-slate-50 text-slate-800 h-[100dvh] overflow-hidden flex flex-col font-sans antialiased select-none">
 
-<header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50 flex-shrink-0 px-1.5 py-2"> 
-    <div class="max-w-md mx-auto flex justify-between items-center gap-1"> 
-        <!-- Левая часть: Кнопка у самого края и полное название --> 
-        <div class="flex items-center gap-1.5"> 
-            <button onclick="goToUploadScreen()" 
-                    class="p-1 hover:bg-indigo-500 rounded-md transition active:scale-95 flex items-center justify-center border border-indigo-400 bg-indigo-500/50 flex-shrink-0"> 
-                <i class="material-icons md-20">home</i> 
-            </button> 
-            <h1 class="text-[13px] sm:text-sm font-bold tracking-tight whitespace-nowrap"> 
-                Контрольная проверка 
-            </h1> 
-        </div> 
-        <!-- Правая часть: Уплотненные кнопка сохранения и бейдж --> 
-        <div class="flex items-center gap-1.5 flex-shrink-0"> 
-            <button id="btn-save-session" 
-                    onclick="saveSessionSnapshot()" 
-                    title="Сохранить прогресс на устройство" 
-                    class="hidden items-center gap-1 bg-indigo-500 hover:bg-indigo-400 active:scale-95 transition rounded-lg px-1.5 py-1 text-[10px] sm:text-xs font-semibold"> 
-                <i class="material-icons md-18">save</i> 
-                <span class="hidden sm:inline">
-                    Снимок
-                </span> 
-            </button> 
-            <span class="text-[10px] bg-indigo-500 px-1.5 py-1 rounded-full font-medium whitespace-nowrap" id="status-badge">
+<!-- ══ SVG-спрайт: заменяет шрифт Material Icons с Google Fonts ══ -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></symbol>
+    <symbol id="i-cancel" viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></symbol>
+    <symbol id="i-zoom-exit" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></symbol>
+</svg>
+
+<header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50 flex-shrink-0 px-1.5 py-2">
+    <div class="max-w-md mx-auto flex justify-between items-center gap-1">
+        <div class="flex items-center gap-1.5">
+            <button type="button" data-action="home" aria-label="Вернуться на стартовый экран" title="Стартовый экран"
+                    class="p-1 hover:bg-indigo-500 rounded-md transition active:scale-95 flex items-center justify-center border border-indigo-400 bg-indigo-500/50 flex-shrink-0">
+                <svg class="icon icon-20" aria-hidden="true"><use href="#i-home"></use></svg>
+            </button>
+            <h1 class="text-[13px] sm:text-sm font-bold tracking-tight whitespace-nowrap">
+                Контрольная проверка
+            </h1>
+        </div>
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+            <button type="button" id="btn-save-session" data-action="snapshot"
+                    title="Сохранить прогресс на устройство"
+                    class="hidden items-center gap-1 bg-indigo-500 hover:bg-indigo-400 active:scale-95 transition rounded-lg px-1.5 py-1 text-[10px] sm:text-xs font-semibold">
+                <svg class="icon icon-18" aria-hidden="true"><use href="#i-save"></use></svg>
+                <span class="hidden sm:inline">Снимок</span>
+            </button>
+            <span id="status-badge" role="status" aria-live="polite"
+                  class="text-[10px] bg-indigo-500 px-1.5 py-1 rounded-full font-medium whitespace-nowrap">
                 Ожидание
-            </span> 
-        </div> 
-    </div> 
+            </span>
+        </div>
+    </div>
 </header>
-    
+
 <main class="flex-1 min-h-0 overflow-hidden p-2 max-w-md mx-auto w-full flex flex-col">
 
-    <!-- ==== Стартовые экраны ==== -->
+    <!-- ==== Экран 1: PIN-код запуска ==== -->
     <div id="screen-auth" class="space-y-4 fade-in">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 text-center">
             <div class="inline-flex p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-2">
-                <i class="material-icons md-24">lock</i>
+                <svg class="icon icon-24" aria-hidden="true"><use href="#i-lock"></use></svg>
             </div>
-            <h2 class="text-lg font-bold text-slate-900">Доступ ограничен</h2>
-            <p class="text-xs text-slate-500">Для работы с системой мобильной проверки введите пароль доступа</p>
+            <h2 class="text-lg font-bold text-slate-900">PIN-код запуска</h2>
+            <!-- Формулировка намеренно скромная: это заслон от случайного
+                 запуска, а не защита данных — см. комментарий в js/app.js -->
+            <p class="text-xs text-slate-500">Введите PIN, чтобы открыть рабочий режим</p>
             <div class="space-y-2 text-left">
-                <input type="password" id="auth-password"
-                       placeholder="Введите пароль"
+                <label for="auth-password" class="sr-only">PIN-код запуска</label>
+                <input type="password" id="auth-password" inputmode="numeric"
+                       autocomplete="current-password" placeholder="Введите PIN"
                        class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium text-center tracking-widest">
             </div>
-            <button onclick="checkAuth()"
+            <button type="button" data-action="auth"
                     class="w-full bg-indigo-600 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-indigo-700 transition active:scale-[0.98] shadow-md shadow-indigo-100 text-sm">
-                ВОЙТИ В СИСТЕМУ
+                ОТКРЫТЬ
             </button>
-            <p id="auth-error"
-               class="text-xs text-rose-600 font-semibold hidden">Неверный пароль доступа!</p>
+            <p id="auth-error" role="alert"
+               class="text-xs text-rose-600 font-semibold hidden">Неверный PIN-код!</p>
         </div>
     </div>
 
+    <!-- ==== Экран 2: загрузка данных ==== -->
     <div id="screen-upload" class="space-y-4 fade-in hidden">
         <div id="restore-banner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
             <div class="flex items-center gap-2 text-amber-800">
-                <i class="material-icons md-24 text-amber-500 flex-shrink-0">history</i>
+                <svg class="icon icon-24 text-amber-500 flex-shrink-0" aria-hidden="true"><use href="#i-history"></use></svg>
                 <div>
                     <div class="font-bold text-sm">Найден сохранённый прогресс</div>
                     <div class="text-xs" id="restore-info">Сессия от …</div>
                 </div>
             </div>
             <div class="flex gap-2">
-                <button onclick="restoreSession()"
+                <button type="button" data-action="restore"
                         class="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-amber-600 transition active:scale-[0.98]">
                     Восстановить
                 </button>
-                <button onclick="clearSavedSession()"
+                <button type="button" data-action="clear-session"
                         class="flex-1 bg-slate-100 text-slate-600 font-bold py-2.5 rounded-xl text-sm hover:bg-slate-200 transition active:scale-[0.98]">
                     Начать заново
                 </button>
@@ -169,28 +118,39 @@
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <h2 class="text-md font-semibold text-slate-900">Загрузка файла</h2>
             <div class="space-y-2">
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">CSV‑файл инвентаризации</label>
-                <input type="file" id="csv-file" accept=".csv"
+                <label for="csv-file" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">CSV‑файл инвентаризации</label>
+                <input type="file" id="csv-file" accept=".csv,text/csv"
                        class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl p-1 bg-slate-50">
             </div>
             <div class="space-y-2">
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Или загрузить снимок сессии (.json)</label>
-                <input type="file" id="session-file" accept=".json"
+                <label for="session-file" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Или загрузить снимок сессии (.json)</label>
+                <input type="file" id="session-file" accept=".json,application/json"
                        class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 border border-slate-200 rounded-xl p-1 bg-slate-50">
             </div>
         </div>
 
-        <div id="loading-msg" class="hidden text-center text-sm font-semibold text-indigo-600 bg-indigo-50 p-3 rounded-xl animate-pulse">
+        <div id="loading-msg" role="status"
+             class="hidden text-center text-sm font-semibold text-indigo-600 bg-indigo-50 p-3 rounded-xl animate-pulse">
             Обработка данных…
         </div>
 
-        <div id="error-card" class="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl hidden space-y-2">
-            <div class="font-bold flex items-center gap-2"><i class="material-icons md-24 text-red-500">warning</i> Ошибка импорта</div>
+        <div id="error-card" role="alert"
+             class="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl hidden space-y-2">
+            <div class="font-bold flex items-center gap-2">
+                <svg class="icon icon-24 text-red-500" aria-hidden="true"><use href="#i-warning"></use></svg>
+                Ошибка импорта
+            </div>
             <p id="error-text" class="text-xs font-mono leading-relaxed"></p>
         </div>
     </div>
 
+    <!-- ==== Экран 3: маршрут ==== -->
     <div id="screen-filter" class="space-y-4 fade-in hidden">
+
+        <!-- Сводка разбора файла: видно, какая колонка во что легла,
+             до того как проверка началась -->
+        <div id="import-summary" class="hidden bg-white border border-slate-200 rounded-2xl p-4"></div>
+
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <div class="border-b border-slate-100 pb-3">
                 <h2 class="text-lg font-bold text-slate-900">Настройки маршрута</h2>
@@ -199,66 +159,65 @@
 
             <div class="space-y-3">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Направление</label>
+                    <label for="filter-napravlenie" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Направление</label>
                     <select id="filter-napravlenie" class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Торговая Марка (ТМ)</label>
+                    <label for="filter-tm" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Торговая Марка (ТМ)</label>
                     <select id="filter-tm" class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Пол / Категория</label>
+                    <label for="filter-pol" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Пол / Категория</label>
                     <select id="filter-pol" class="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-medium"></select>
                 </div>
             </div>
 
-            <!-- Радио‑сеть -->
-            <div class="pt-3 mt-1 border-t border-slate-100">
-                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
+            <!-- Торговая сеть: подсветка выбранного через .net-option:has(),
+                 вместо прежних классов [&:has(input:checked)]:… в разметке -->
+            <fieldset class="pt-3 mt-1 border-t border-slate-100">
+                <legend class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center w-full">
                     Торговая сеть
-                </label>
+                </legend>
                 <div class="grid grid-cols-2 gap-2">
-                    <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-indigo-50 [&:has(input:checked)]:bg-indigo-50 [&:has(input:checked)]:border-indigo-300 transition">
-                        <input type="radio" name="network" value="FunDay" class="text-indigo-600 w-4 h-4" checked>
+                    <label class="net-option">
+                        <input type="radio" name="network" value="FunDay" class="w-4 h-4" checked>
                         <span class="text-xs font-bold text-slate-700">FunDay</span>
                     </label>
-                    <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-indigo-50 [&:has(input:checked)]:bg-indigo-50 [&:has(input:checked)]:border-indigo-300 transition">
-                        <input type="radio" name="network" value="O'Stin" class="text-indigo-600 w-4 h-4">
+                    <label class="net-option">
+                        <input type="radio" name="network" value="O'Stin" class="w-4 h-4">
                         <span class="text-xs font-bold text-slate-700">O'Stin</span>
                     </label>
-                    <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-indigo-50 [&:has(input:checked)]:bg-indigo-50 [&:has(input:checked)]:border-indigo-300 transition">
-                        <input type="radio" name="network" value="Demix" class="text-indigo-600 w-4 h-4">
+                    <label class="net-option">
+                        <input type="radio" name="network" value="Demix" class="w-4 h-4">
                         <span class="text-xs font-bold text-slate-700">Demix</span>
                     </label>
-                    <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-indigo-50 [&:has(input:checked)]:bg-indigo-50 [&:has(input:checked)]:border-indigo-300 transition">
-                        <input type="radio" name="network" value="Sportmaster" class="text-indigo-600 w-4 h-4">
+                    <label class="net-option">
+                        <input type="radio" name="network" value="Sportmaster" class="w-4 h-4">
                         <span class="text-xs font-bold text-slate-700">Sportmaster</span>
                     </label>
                 </div>
-            </div>
+            </fieldset>
 
-            <button onclick="startVerification()"
+            <button type="button" data-action="start"
                     class="w-full bg-indigo-600 text-white font-bold py-4 px-4 rounded-xl hover:bg-indigo-700 transition active:scale-[0.98] shadow-md shadow-indigo-100 text-base">
                 НАЧАТЬ ПРОВЕРКУ
             </button>
         </div>
     </div>
 
-    <!-- ==== РАБОЧИЙ ЭКРАН (Только контент, без нижнего футера) ==== -->
+    <!-- ==== Экран 4: рабочий ==== -->
     <div id="screen-work" class="fade-in hidden flex flex-1 min-h-0 overflow-hidden flex-col" style="gap:8px;">
 
-        <!-- Баннер второго круга -->
         <div id="incomplete-banner"
              class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl items-center gap-3 flex-shrink-0"
              style="padding:6px 12px;">
-            <i class="material-icons md-20 text-amber-500 flex-shrink-0">loop</i>
+            <svg class="icon icon-20 text-amber-500 flex-shrink-0" aria-hidden="true"><use href="#i-loop"></use></svg>
             <div class="text-xs"><span class="font-bold">Второй круг · </span><span id="incomplete-banner-text">Незавершённые товары</span></div>
         </div>
 
         <!-- ── КАРТОЧКА ТОВАРА ── -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-shrink-0 flex flex-col">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-shrink-0 flex flex-col min-w-0">
 
-            <!-- Бейджи -->
             <div class="bg-slate-50 border-b border-slate-100 flex justify-between items-start px-3 py-2 flex-shrink-0">
                 <div class="flex gap-4">
                     <div class="flex flex-col">
@@ -276,35 +235,31 @@
                 </div>
             </div>
 
-            <!-- Фото + артикул -->
             <div class="p-3 space-y-2 flex-shrink-0">
-                <div class="flex gap-3">                                     <!-- ← исправление: .flex.gap-3 уже имеет min-width:0 -->
-                    <img id="view-image"
-                         alt="Товар"
-                         class="h-auto max-h-[100px] object-contain rounded-lg flex-shrink-0 bg-white"
-                         onclick="toggleImageZoom(true)">
+                <div class="flex gap-3 min-w-0">
+                    <img id="view-image" class="product-photo" alt="Товар"
+                         data-action="zoom-open">
 
-                    <div class="flex-1 flex flex-col justify-center">
+                    <div class="product-meta flex flex-col justify-center">
                         <div class="bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center p-2">
                             <div class="overflow-hidden">
                                 <span class="text-[9px] font-bold text-slate-400 uppercase block leading-none mb-1">Артикул</span>
                                 <span id="view-tovar"
                                       class="text-sm font-mono font-bold tracking-wider text-slate-900 leading-none block truncate"></span>
                             </div>
-                            <button onclick="copyBarcode()"
+                            <button type="button" data-action="copy"
+                                    aria-label="Скопировать артикул" title="Скопировать артикул"
                                     class="text-indigo-600 hover:text-indigo-800 p-1.5 ml-1 bg-white rounded-lg shadow-sm border border-slate-100 active:scale-95 transition flex-shrink-0">
-                                <i class="material-icons md-20">content_copy</i>
+                                <svg class="icon icon-20" aria-hidden="true"><use href="#i-copy"></use></svg>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Наименование товара -->
                 <div id="view-name"
                      class="text-xs font-bold text-slate-800 leading-tight bg-amber-50/50 p-2 rounded-lg border border-amber-100/50 h-[76px] line-clamp-4 overflow-hidden">
                 </div>
 
-                <!-- Totals -->
                 <div id="totals-panel"
                      class="grid grid-cols-2 rounded-xl bg-slate-100 border-2 border-transparent transition-all duration-300 p-2 mt-1">
                     <div class="text-center border-r border-slate-200">
@@ -319,38 +274,38 @@
             </div>
         </div>
 
-        <!-- ── Список зон (скролл) ── -->
-        <div class="flex-1 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative"> 
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-3 pt-2.5 pb-1 border-b border-slate-50 flex-shrink-0 bg-white z-10"> 
-                Участки сканирования 
-            </span> 
-            <div id="zones-list" 
-                class="flex-1 min-h-0 overflow-y-auto custom-scroll p-2 flex flex-col" 
-                style="gap: 6px;"> 
-                <!-- Сюда JavaScript вставляет зоны --> 
-            </div> 
+        <!-- ── Список зон (прокрутка) ── -->
+        <div class="flex-1 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative min-w-0">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-3 pt-2.5 pb-1 border-b border-slate-50 flex-shrink-0 bg-white z-10">
+                Участки сканирования
+            </span>
+            <div id="zones-list" role="list"
+                 class="zones-list flex-1 min-h-0 overflow-y-auto custom-scroll p-2 flex flex-col"
+                 style="gap: 6px;">
+                <!-- Строки участков вставляет js/app.js -->
+            </div>
         </div>
-    </div> <!-- /#screen-work -->
+    </div>
 
-    <!-- ==== ФУТЕР ДЛЯ РАБОЧЕГО ЭКРАНА (вынесен наружу) ==== -->
+    <!-- ==== Футер рабочего экрана ==== -->
     <div id="footer-work"
          class="bg-white rounded-2xl shadow-sm border border-slate-100 flex-shrink-0 p-3 hidden">
         <div class="work-nav-inner flex flex-col gap-2">
             <div class="flex gap-2">
-                <button onclick="prevProduct()"
+                <button type="button" data-action="prev"
                         class="work-nav-btn flex-1 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
-                    <i class="material-icons md-20">arrow_back_ios</i> Назад
+                    <svg class="icon icon-20" aria-hidden="true"><use href="#i-prev"></use></svg> Назад
                 </button>
-                <button onclick="nextProductManual()"
+                <button type="button" data-action="next"
                         class="work-nav-btn flex-1 bg-indigo-100 text-indigo-700 font-bold rounded-xl hover:bg-indigo-200 transition active:scale-[0.98] flex justify-center items-center gap-1 text-sm">
-                    Вперёд <i class="material-icons md-20">arrow_forward_ios</i>
+                    Вперёд <svg class="icon icon-20" aria-hidden="true"><use href="#i-next"></use></svg>
                 </button>
             </div>
 
-            <button onclick="exportDiscrepancies()"
+            <button type="button" data-action="export"
                     class="w-full bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2 text-sm mt-1"
                     style="padding:8px 14px;">
-                <i class="material-icons md-20">download</i> Экспорт расхождений
+                <svg class="icon icon-20" aria-hidden="true"><use href="#i-download"></use></svg> Экспорт отчёта
             </button>
 
             <div class="flex flex-col pt-1 gap-2">
@@ -372,641 +327,50 @@
 </main>
 
 <!-- ========= МОДАЛЬНЫЕ ОКНА ========= -->
-<div id="discrepancyModal"
+<div id="discrepancyModal" role="dialog" aria-modal="true" aria-labelledby="discrepancyTitle"
      class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
     <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in">
-        <h3 class="text-lg font-bold text-slate-900 mb-1">Не подтверждено</h3>
+        <h3 id="discrepancyTitle" class="text-lg font-bold text-slate-900 mb-1">Не подтверждено</h3>
         <p id="modalProductName" class="text-xs text-slate-500 mb-4"></p>
-        <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Причина</label>
-        <textarea id="discrepancyReason"
-                  rows="3"
+        <label for="discrepancyReason" class="block text-xs font-bold text-slate-400 uppercase mb-2">Причина</label>
+        <textarea id="discrepancyReason" rows="3"
                   class="w-full p-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 bg-slate-50 mb-4"
                   placeholder="Например: пустая полка…"></textarea>
         <div class="flex gap-3">
-            <button onclick="closeModal()"
+            <button type="button" data-action="modal-cancel"
                     class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Отмена</button>
-            <button onclick="saveDiscrepancy()"
+            <button type="button" data-action="modal-save"
                     class="flex-1 py-3 px-4 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-600 transition">Сохранить</button>
         </div>
     </div>
 </div>
 
-<div id="allDoneModal"
+<div id="allDoneModal" role="dialog" aria-modal="true" aria-labelledby="allDoneTitle"
      class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
     <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in text-center">
-        <div class="text-5xl mb-3">🎉</div>
-        <h3 class="text-xl font-bold text-slate-900 mb-2">Проверка завершена!</h3>
+        <div class="text-5xl mb-3" aria-hidden="true">🎉</div>
+        <h3 id="allDoneTitle" class="text-xl font-bold text-slate-900 mb-2">Проверка завершена!</h3>
         <p id="allDoneText" class="text-sm text-slate-500 mb-5"></p>
         <div class="flex gap-3">
-            <button onclick="closeAllDoneModal()"
+            <button type="button" data-action="alldone-close"
                     class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Остаться</button>
-            <button onclick="exportDiscrepancies(); closeAllDoneModal()"
+            <button type="button" data-action="alldone-export"
                     class="flex-1 py-3 px-4 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition">Скачать отчёт</button>
         </div>
     </div>
 </div>
 
-<div id="toast"
+<div id="toast" role="status" aria-live="polite"
      class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-semibold transition-all duration-300 translate-y-20 opacity-0 z-50 flex items-center gap-2 max-w-sm w-[90%] justify-center pointer-events-none">
     <span id="toast-text"></span>
 </div>
 
-<div id="imageZoomOverlay"
-     class="img-zoom-overlay"
-     onclick="toggleImageZoom(false)">
+<div id="imageZoomOverlay" class="img-zoom-overlay" data-action="zoom-close">
     <img id="zoom-image-target" src="" alt="Увеличенное фото">
     <div class="absolute top-5 right-5 text-white/70 bg-black/40 p-2 rounded-full backdrop-blur-sm">
-        <i class="material-icons md-24">fullscreen_exit</i>
+        <svg class="icon icon-24" aria-hidden="true"><use href="#i-zoom-exit"></use></svg>
     </div>
 </div>
 
-<script>
-/* ──────────────────────────────────────────────────────────────
-   Всё JS‑логика остаётся почти без изменений, только добавлены
-   скрытие/показ футера и инициализация hide‑state при загрузке.
-   ────────────────────────────────────────────────────────────── */
-(function () {
-
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-            .catch(err => console.log('Ошибка регистрации Service Worker:', err));
-    }
-
-    const AUTH_HASH = "156a0510b488c25fa442b6442013c3e1b5738718aa0d2763b8265df9d00eb126";
-
-    async function sha256(message) {
-        const msgBuffer = new TextEncoder().encode(message);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    /* ---------- Аутентификация ---------- */
-    window.checkAuth = async function () {
-        const input = document.getElementById('auth-password').value.trim();
-        const errorEl = document.getElementById('auth-error');
-        if (!input) return;
-        const inputHash = await sha256(input);
-        if (inputHash === AUTH_HASH) {
-            document.getElementById('screen-auth').classList.add('hidden');
-            if (localStorage.getItem('wh_session_v1')) {
-                document.getElementById('restore-banner').classList.remove('hidden');
-                document.getElementById('screen-upload').classList.remove('hidden');
-            } else {
-                document.getElementById('screen-upload').classList.remove('hidden');
-            }
-            sessionStorage.setItem('wh_auth_passed', 'true');
-        } else {
-            errorEl.classList.remove('hidden');
-            document.getElementById('auth-password').value = '';
-        }
-    };
-
-    /* ---------- Инициализация ---------- */
-    window.addEventListener('DOMContentLoaded', () => {
-        // При загрузке скрываем рабочий экран и футер
-        document.getElementById('screen-work').classList.add('hidden');
-        document.getElementById('footer-work').classList.add('hidden');
-
-        if (sessionStorage.getItem('wh_auth_passed') === 'true') {
-            document.getElementById('screen-auth').classList.add('hidden');
-            document.getElementById('screen-upload').classList.remove('hidden');
-        }
-        document.getElementById('auth-password')?.addEventListener('keypress', e => {
-            if (e.key === 'Enter') checkAuth();
-        });
-
-        document.getElementById('csv-file').addEventListener('change', handleCsvSelect);
-        document.getElementById('session-file').addEventListener('change', handleSessionFileSelect);
-        checkRestorable();
-    });
-
-    const LS_KEY      = 'wh_session_v1';
-    const LS_META_KEY = 'wh_session_meta_v1';
-
-    let rawProducts         = [];
-    let filteredProducts    = [];
-    let initialFilteredList = [];
-    let currentIndex        = 0;
-    let currentZoneIndex    = null;
-    let autoAdvanceTimer    = null;
-    let selectedNetwork = 'FunDay'; // по‑умолчанию
-
-    /* ---------- Сохранение и восстановление ---------- */
-    function autoSave() {
-        try {
-            const payload = { rawProducts, filteredProducts, initialFilteredList, currentIndex, ts: Date.now() };
-            localStorage.setItem(LS_KEY, JSON.stringify(payload));
-            localStorage.setItem(LS_META_KEY, new Date().toISOString());
-        } catch (e) { console.warn('autoSave failed:', e); }
-    }
-
-    function checkRestorable() {
-        try {
-            const raw = localStorage.getItem(LS_KEY);
-            if (!raw) return;
-            const meta = localStorage.getItem(LS_META_KEY);
-            const dt   = meta ? new Date(meta).toLocaleString('ru-RU') : 'неизвестно';
-            document.getElementById('restore-info').textContent = `Сохранено: ${dt}`;
-            document.getElementById('restore-banner').classList.remove('hidden');
-        } catch (e) {}
-    }
-
-    window.restoreSession = function () {
-        try {
-            const raw = localStorage.getItem(LS_KEY);
-            if (!raw) return showToast('Нет данных для восстановления');
-            const payload = JSON.parse(raw);
-            rawProducts         = payload.rawProducts         || [];
-            filteredProducts    = payload.filteredProducts    || [];
-            initialFilteredList = payload.initialFilteredList || [];
-            currentIndex        = payload.currentIndex        || 0;
-            document.getElementById('restore-banner').classList.add('hidden');
-            goToWorkScreen();
-            showToast('✅ Сессия восстановлена', 2500);
-        } catch (e) { showToast('Ошибка восстановления: ' + e.message); }
-    };
-
-    window.clearSavedSession = function () {
-        localStorage.removeItem(LS_KEY);
-        localStorage.removeItem(LS_META_KEY);
-        document.getElementById('restore-banner').classList.add('hidden');
-        showToast('Сохранённый прогресс удалён');
-    };
-
-    window.saveSessionSnapshot = function () {
-        if (!rawProducts.length) { showToast('Нет данных для сохранения'); return; }
-        try {
-            const payload = { version: 1, savedAt: new Date().toISOString(), rawProducts, filteredProducts, initialFilteredList, currentIndex };
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            const url  = URL.createObjectURL(blob);
-            const a    = document.createElement('a');
-            a.href = url; a.download = `wh_session_${Date.now()}.json`;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showToast('💾 Снимок сессии сохранён', 2500);
-        } catch (e) { showToast('Ошибка сохранения: ' + e.message); }
-    };
-
-    /* ---------- Загрузка CSV ---------- */
-    async function handleCsvSelect(e) {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        document.getElementById('loading-msg').classList.remove('hidden');
-        document.getElementById('error-card').classList.add('hidden');
-        try {
-            const text = await file.text();
-            runParsing(text);
-        } catch (err) { triggerError(err.message); }
-    }
-
-    function runParsing(text) {
-        const lines = text.split('\n').filter(l => l.trim());
-        if (!lines.length) return triggerError('Файл пуст');
-        const delimiter = lines[0].includes(';') ? ';' : (lines[0].includes('\t') ? '\t' : ',');
-        const headers   = parseCsvLine(lines[0], delimiter);
-        const idx = {
-            tovar: findHeaderIndex(headers, ['товар', 'штрихкод']),
-            name : findHeaderIndex(headers, ['наименование', 'название']),
-            tm   : findHeaderIndex(headers, ['тм', 'бренд', 'марка']),
-            uch  : findHeaderIndex(headers, ['уч. скан.', 'участок']),
-            kol  : findHeaderIndex(headers, ['кол-во', 'количество']),
-            napr : findHeaderIndex(headers, ['направление', 'категория']),
-            pol  : findHeaderIndex(headers, ['пол', 'гендер'])
-        };
-        if (idx.tovar === -1) return triggerError('Не найден столбец "Товар"');
-
-        const dataMap = {};
-        for (const line of lines.slice(1)) {
-            const cells = parseCsvLine(line, delimiter);
-            const barcode = cleanValue(cells[idx.tovar]);
-            if (!barcode) continue;
-
-            if (!(barcode in dataMap)) {
-                dataMap[barcode] = {
-                    tovar: barcode,
-                    name : cleanValue(cells[idx.name]),
-                    tm   : cleanValue(cells[idx.tm]),
-                    napr : cleanValue(cells[idx.napr]),
-                    pol  : cleanValue(cells[idx.pol]),
-                    ost_plan: 0,
-                    zones: []
-                };
-            }
-            const zoneNumber = cleanValue(cells[idx.uch]);
-            const quantity   = parseInt(cleanValue(cells[idx.kol]));
-            if (zoneNumber && !isNaN(quantity) && quantity > 0) {
-                const existing = dataMap[barcode].zones.find(z => z.uch === zoneNumber);
-                if (existing) existing.kol += quantity;
-                else {
-                    dataMap[barcode].zones.push({ uch: zoneNumber, kol: quantity, checked: false, status: 'waiting', comment: '' });
-                    dataMap[barcode].ost_plan += quantity;
-                }
-            }
-        }
-        rawProducts = Object.values(dataMap).map(p => {
-            p.zones.sort((a, b) => parseInt(a.uch) - parseInt(b.uch));
-            return p;
-        });
-        document.getElementById('loading-msg').classList.add('hidden');
-        document.getElementById('screen-upload').classList.add('hidden');
-        document.getElementById('screen-filter').classList.remove('hidden');
-        document.getElementById('status-badge').textContent = 'Данные готовы';
-        populateFilters();
-    }
-
-    /* ---------- Фильтры ---------- */
-    function populateFilters() {
-        const selNapr = document.getElementById('filter-napravlenie');
-        const selTm   = document.getElementById('filter-tm');
-        const selPol  = document.getElementById('filter-pol');
-
-        function rebuild() {
-            const napr = selNapr.value, tm = selTm.value, pol = selPol.value;
-            const filtered = rawProducts.filter(p => (!napr || p.napr === napr) && (!tm || p.tm === tm) && (!pol || p.pol === pol));
-            const sets = { napr: new Set(), tm: new Set(), pol: new Set() };
-            filtered.forEach(p => { sets.napr.add(p.napr); sets.tm.add(p.tm); sets.pol.add(p.pol); });
-            refreshSelect(selNapr, sets.napr, napr);
-            refreshSelect(selTm,   sets.tm,   tm);
-            refreshSelect(selPol,  sets.pol,  pol);
-        }
-
-        function refreshSelect(el, values, cur) {
-            const prev = el.value;
-            el.innerHTML = '<option value="">-- Все позиции --</option>';
-            [...values].sort().forEach(v => {
-                if (!v) return;
-                const opt = document.createElement('option');
-                opt.value = opt.textContent = v; el.appendChild(opt);
-            });
-            if ([...values].includes(prev)) el.value = prev;
-        }
-
-        const allN = new Set(), allT = new Set(), allP = new Set();
-        rawProducts.forEach(p => { allN.add(p.napr); allT.add(p.tm); allP.add(p.pol); });
-        refreshSelect(selNapr, allN, '');
-        refreshSelect(selTm,   allT, '');
-        refreshSelect(selPol,  allP, '');
-        selNapr.addEventListener('change', rebuild);
-        selTm.addEventListener('change', rebuild);
-        selPol.addEventListener('change', rebuild);
-    }
-
-    /* ---------- Запуск проверки ---------- */
-    window.startVerification = function () {
-        const filters = {
-            napr: document.getElementById('filter-napravlenie').value,
-            tm  : document.getElementById('filter-tm').value,
-            pol : document.getElementById('filter-pol').value
-        };
-        // чтение выбранной сети
-        selectedNetwork = document.querySelector('input[name="network"]:checked').value;
-
-        let mainList = rawProducts.filter(p =>
-            (!filters.napr || p.napr === filters.napr) &&
-            (!filters.tm   || p.tm   === filters.tm)   &&
-            (!filters.pol  || p.pol  === filters.pol));
-
-        if (!mainList.length) { showToast('Нет товаров по этому фильтру!'); return; }
-
-        mainList.sort((a, b) => {
-            const az = parseInt(a.zones[0]?.uch ?? '999999');
-            const bz = parseInt(b.zones[0]?.uch ?? '999999');
-            return az !== bz ? az - bz : a.tovar.localeCompare(b.tovar, undefined, { numeric: true });
-        });
-
-        initialFilteredList = [...mainList];
-        filteredProducts    = mainList;
-        currentIndex        = 0;
-        autoSave();
-        goToWorkScreen();
-        preloadFilteredImages(mainList);
-    };
-
-    function preloadFilteredImages(productsList) {
-        showToast('⏳ Оптимизация медиа...');
-        productsList.forEach(p => {
-            if (p.tovar) {
-                const imgCache = new Image();
-                imgCache.src = `img/${selectedNetwork}/${p.tovar}.jpg`;
-                const emptyCache = new Image();
-                emptyCache.src = 'img/empty.jpg';
-            }
-        });
-    }
-
-    /* ---------- Переходы между экранами ---------- */
-    function goToWorkScreen() {
-        document.getElementById('screen-upload').classList.add('hidden');
-        document.getElementById('screen-filter').classList.add('hidden');
-        document.getElementById('screen-work').classList.remove('hidden');
-        document.getElementById('footer-work').classList.remove('hidden');   // ← исправление
-        document.getElementById('status-badge').textContent = 'Проверка';
-        document.getElementById('btn-save-session').classList.remove('hidden');
-        document.getElementById('btn-save-session').classList.add('flex');
-        renderProduct();
-    }
-
-    window.goToUploadScreen = function () {
-        if (confirm("Вернуться на стартовый экран? Текущий прогресс проверки будет сохранен.")) {
-            autoSave();
-            document.getElementById('screen-work').classList.add('hidden');
-            document.getElementById('footer-work').classList.add('hidden');   // ← исправление
-            document.getElementById('screen-filter').classList.add('hidden');
-            document.getElementById('screen-upload').classList.remove('hidden');
-            document.getElementById('status-badge').textContent = 'Ожидание';
-            document.getElementById('btn-save-session').classList.add('hidden');
-            document.getElementById('btn-save-session').classList.remove('flex');
-        }
-    };
-
-    /* ---------- Рендер продукта ---------- */
-    function renderProduct() {
-        if (!filteredProducts[currentIndex]) return;
-        const p = filteredProducts[currentIndex];
-
-        const imgEl = document.getElementById('view-image');
-        if (imgEl && p.tovar) {
-            const VERSION = "25_07_2026";
-            imgEl.onerror = function () {
-                this.src = `img/empty.jpg?v=${VERSION}`;
-                this.onerror = null;
-            };
-            imgEl.src = `img/${selectedNetwork}/${p.tovar}.jpg?v=${VERSION}`; // ← исправление
-        }
-
-        const isSecondRound = filteredProducts.length < initialFilteredList.length;
-        const banner = document.getElementById('incomplete-banner');
-        if (isSecondRound) {
-            banner.classList.remove('hidden');
-            document.getElementById('incomplete-banner-text').textContent =
-                `Незавершённых: ${filteredProducts.length} из ${initialFilteredList.length}`;
-        } else {
-            banner.classList.add('hidden');
-        }
-
-        document.getElementById('view-napr').textContent     = p.napr || '—';
-        document.getElementById('view-pol').textContent      = p.pol  || '—';
-        document.getElementById('view-tm-name').textContent  = p.tm   || '—';
-        document.getElementById('view-tovar').textContent    = p.tovar;
-        document.getElementById('view-name').textContent     = p.name;
-        document.getElementById('count-plan').textContent    = p.ost_plan;
-
-        const container = document.getElementById('zones-list');
-        container.innerHTML = '';
-
-        p.zones.forEach((z, i) => {
-            const row = document.createElement('div');
-            let bc = 'border-slate-200';
-            if (z.status === 'confirmed')      bc = 'border-emerald-500 bg-emerald-50/50';
-            if (z.status === 'not_confirmed')  bc = 'border-rose-500 bg-rose-50';
-            row.className = `work-zone-row zone-item flex items-center justify-between border-2 rounded-xl transition ${bc}`;
-
-            const left = document.createElement('div');
-            left.className = 'text-sm text-slate-700';
-            left.textContent = 'Участок: ';
-            const strong = document.createElement('strong');
-            strong.textContent = z.uch; left.appendChild(strong);
-
-            const right = document.createElement('div');
-            right.className = 'flex gap-2';
-
-            const btnCheck = document.createElement('button');
-            btnCheck.className = `px-3 py-2 rounded-xl font-bold text-xs ${z.checked ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`;
-            btnCheck.textContent = z.checked ? `✓ ${z.kol}` : `Ожидает (${z.kol})`;
-            btnCheck.addEventListener('click', () => toggleZone(i));
-
-            const btnReject = document.createElement('button');
-            btnReject.className = 'p-1.5 text-rose-500';
-            const icon = document.createElement('i');
-            icon.className = 'material-icons md-20';
-            icon.textContent = 'cancel';
-            btnReject.appendChild(icon);
-            btnReject.addEventListener('click', () => openDiscrepancyModal(i));
-
-            right.appendChild(btnCheck);
-            right.appendChild(btnReject);
-            row.appendChild(left);
-            row.appendChild(right);
-            container.appendChild(row);
-        });
-
-        updateTotals();
-        updateProgress();
-    }
-
-    window.toggleZone = function (i) {
-        const z = filteredProducts[currentIndex].zones[i];
-        z.checked = !z.checked;
-        z.status = z.checked ? 'confirmed' : 'waiting';
-        if (!z.checked) z.comment = '';
-        autoSave();
-        renderProduct();
-    };
-
-    function updateTotals() {
-        const p = filteredProducts[currentIndex];
-        const fact = p.zones.reduce((s, z) => s + (z.checked ? z.kol : 0), 0);
-        document.getElementById('count-fact').textContent = fact;
-
-        const allDone = p.zones.every(z => z.status !== 'waiting');
-        const isMatch = fact === p.ost_plan && p.ost_plan > 0;
-        const panel   = document.getElementById('totals-panel');
-
-        if (isMatch && allDone) {
-            panel.className = 'grid grid-cols-2 rounded-xl bg-emerald-50 border-2 border-emerald-500 text-emerald-900 transition-all duration-300 p-2';
-            if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
-            const idxSnap = currentIndex;
-            autoAdvanceTimer = setTimeout(() => {
-                autoAdvanceTimer = null;
-                if (currentIndex === idxSnap) autoNextProduct();
-            }, 700);
-        } else {
-            panel.className = 'grid grid-cols-2 rounded-xl bg-slate-100 border-2 border-transparent transition-all duration-300 p-2';
-        }
-    }
-
-    function updateProgress() {
-        const total     = filteredProducts.length;
-        const completed = filteredProducts.filter(isProductDone).length;
-        document.getElementById('progress-text').textContent   = `${currentIndex + 1} из ${total}`;
-        document.getElementById('completed-count').textContent = `${completed} из ${total}`;
-        document.getElementById('progress-bar').style.width    = `${Math.round((completed / total) * 100)}%`;
-    }
-
-    function isProductDone(p) {
-        return p.zones.length > 0 && p.zones.every(z => z.status !== 'waiting');
-    }
-
-    function autoNextProduct() {
-        const nextIdx = findNextIncomplete(currentIndex + 1);
-        if (nextIdx !== -1) { currentIndex = nextIdx; renderProduct(); return; }
-        const allIncomplete = filteredProducts.filter(p => !isProductDone(p));
-        if (!allIncomplete.length) { showAllDoneModal(); return; }
-
-        const incSet = new Set(allIncomplete.map(p => p.tovar));
-        filteredProducts = initialFilteredList.filter(p => incSet.has(p.tovar));
-        currentIndex = 0;
-        autoSave();
-        showToast(`↩ Второй круг: ${filteredProducts.length} товаров`, 3000);
-        renderProduct();
-    }
-
-    function findNextIncomplete(from) {
-        for (let i = from; i < filteredProducts.length; i++) {
-            if (!isProductDone(filteredProducts[i])) return i;
-        }
-        return -1;
-    }
-
-    window.nextProductManual = function () {
-        if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
-        if (currentIndex < filteredProducts.length - 1) currentIndex++;
-        else { currentIndex = 0; showToast('🔄 Начало списка', 2000); }
-        renderProduct();
-    };
-
-    window.prevProduct = function () {
-        if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
-        if (currentIndex > 0) { currentIndex--; renderProduct(); }
-        else { showToast('⛔ Это начало списка', 2000); }
-    };
-
-    /* ---------- Копировать ШК ---------- */
-    window.copyBarcode = function () {
-        const b = document.getElementById('view-tovar').textContent;
-        if (!b) return;
-        navigator.clipboard.writeText(b)
-            .then(() => showToast('📋 Скопировано'))
-            .catch(() => showToast('Не удалось скопировать'));
-    };
-
-    /* ---------- Модальное окно «расхождения» ---------- */
-    window.openDiscrepancyModal = function (i) {
-        currentZoneIndex = i;
-        document.getElementById('modalProductName').textContent = filteredProducts[currentIndex].name;
-        document.getElementById('discrepancyReason').value = '';
-        document.getElementById('discrepancyModal').style.display = 'flex';
-    };
-    window.closeModal = function () { document.getElementById('discrepancyModal').style.display = 'none'; };
-    window.saveDiscrepancy = function () {
-        const reason = document.getElementById('discrepancyReason').value.trim();
-        const z = filteredProducts[currentIndex].zones[currentZoneIndex];
-        z.status  = 'not_confirmed';
-        z.comment = reason || 'Без комментария';
-        z.checked = true;
-        closeModal();
-        autoSave();
-        renderProduct();
-    };
-
-    /* ---------- Финальный модал и экспорт ---------- */
-    function showAllDoneModal() {
-        const total      = initialFilteredList.length;
-        const withIssues = initialFilteredList.filter(p => p.zones.some(z => z.status === 'not_confirmed')).length;
-        document.getElementById('allDoneText').textContent =
-            `Всего: ${total}. Без замечаний: ${total - withIssues}. С расхождениями: ${withIssues}.`;
-        document.getElementById('allDoneModal').style.display = 'flex';
-    }
-    window.closeAllDoneModal = function () { document.getElementById('allDoneModal').style.display = 'none'; };
-
-    window.exportDiscrepancies = function () {
-        let csv = '\uFEFFТовар;Наименование;ТМ;Направление;Пол;Участок;Кол‑во план;Причина\n';
-        let cnt = 0;
-        rawProducts.forEach(p => {
-            p.zones.forEach(z => {
-                if (z.status === 'not_confirmed') {
-                    const esc = s => String(s || '').replace(/;/g, ',');
-                    csv += [esc(p.tovar), esc(p.name), esc(p.tm), esc(p.napr), esc(p.pol), esc(z.uch), z.kol, esc(z.comment)].join(';') + '\n';
-                    cnt++;
-                }
-            });
-        });
-        if (!cnt) { showToast('❌ Нет расхождений для экспорта'); return; }
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url; a.download = `errors_${Date.now()}.csv`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showToast(`✅ Экспорт: ${cnt} расхождений`);
-    };
-
-    /* ---------- Тосты ---------- */
-    function showToast(text, duration = 2500) {
-        const t = document.getElementById('toast');
-        document.getElementById('toast-text').textContent = text;
-        t.classList.remove('translate-y-20', 'opacity-0');
-        t.classList.add('translate-y-0', 'opacity-100');
-        setTimeout(() => {
-            t.classList.remove('translate-y-0', 'opacity-100');
-            t.classList.add('translate-y-20', 'opacity-0');
-        }, duration);
-    }
-
-    /* ---------- Ошибки ---------- */
-    function triggerError(m) {
-        document.getElementById('error-text').textContent = m;
-        document.getElementById('error-card').classList.remove('hidden');
-        document.getElementById('loading-msg').classList.add('hidden');
-    }
-
-    /* ---------- CSV‑парсер утилиты ---------- */
-    function parseCsvLine(line, delimiter) {
-        const result = []; let field = '', quoteMode = false;
-        for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === '"' && quoteMode && line[i + 1] === '"') { field += '"'; i++; }
-            else if (ch === '"') { quoteMode = !quoteMode; }
-            else if (ch === delimiter && !quoteMode) { result.push(field.trim()); field = ''; }
-            else { field += ch; }
-        }
-        result.push(field.trim());
-        return result;
-    }
-    function cleanValue(v) { return v ? v.trim().replace(/^["']|["']$/g, '').replace(/""/g, '"') : ''; }
-    function findHeaderIndex(arr, keywords) { return arr.findIndex(h => keywords.some(k => h.toLowerCase().includes(k))); }
-
-    /* ---------- Обработчики свайпов (они теперь не влияют на горизонтальный скролл) ---------- */
-    let touchStartX = 0, touchStartY = 0, touchEndX = 0, touchEndY = 0;
-    const screenWork = document.getElementById('screen-work');
-
-    screenWork.addEventListener('touchstart', e => {
-        touchStartX = e.changedTouches[0].screenX;
-        touchStartY = e.changedTouches[0].screenY;
-    }, { passive: true });
-
-    screenWork.addEventListener('touchend', e => {
-        touchEndX = e.changedTouches[0].screenX;
-        touchEndY = e.changedTouches[0].screenY;
-        handleSwipe();
-    }, { passive: true });
-
-    function handleSwipe() {
-        const xDiff = Math.abs(touchStartX - touchEndX);
-        const yDiff = Math.abs(touchStartY - touchEndY);
-        if (xDiff > yDiff && xDiff > 60) {
-            if (touchEndX < touchStartX) nextProductManual();
-            else prevProduct();
-        }
-    }
-
-    /* ---------- Увеличение изображения ---------- */
-    window.toggleImageZoom = function (show) {
-        const overlay = document.getElementById('imageZoomOverlay');
-        const zoomImg = document.getElementById('zoom-image-target');
-        const curImg  = document.getElementById('view-image');
-        if (!overlay || !zoomImg || !curImg) return;
-        if (show) {
-            zoomImg.src = curImg.src;
-            overlay.classList.add('active');
-        } else {
-            overlay.classList.remove('active');
-            setTimeout(() => { if (!overlay.classList.contains('active')) zoomImg.src = ''; }, 250);
-        }
-    };
-
-})();
-</script>
 </body>
 </html>
