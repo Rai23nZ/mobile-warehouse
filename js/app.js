@@ -67,7 +67,8 @@ if ('serviceWorker' in navigator) {
    равно приходят из файла пользователя и никуда не отправляются.
    Экран назван соответственно, чтобы не создавать ложного впечатления.
    ══════════════════════════════════════════════════════════════════════ */
-const AUTH_HASH = '156a0510b488c25fa442b6442013c3e1b5738718aa0d2763b8265df9d00eb126';
+// ОБНОВЛЕНО: Новый хэш для пин-кода 2026
+const AUTH_HASH = '158a323a7ba44870f23d96f1516dd70aa48e9a72db4ebb026b0a89e212a208ab';
 
 async function sha256(message) {
     const buf  = new TextEncoder().encode(message);
