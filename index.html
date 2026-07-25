@@ -73,7 +73,7 @@
 <main class="flex-1 min-h-0 overflow-hidden p-2 max-w-md mx-auto w-full flex flex-col">
 
     <!-- ==== Экран 1: PIN-код запуска ==== -->
-    <div id="screen-auth" class="space-y-4 fade-in">
+    <div id="screen-auth" class="screen-scroll space-y-4 fade-in">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 text-center">
             <div class="inline-flex p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-2">
                 <svg class="icon icon-24" aria-hidden="true"><use href="#i-lock"></use></svg>
@@ -98,7 +98,7 @@
     </div>
 
     <!-- ==== Экран 1б: выбор роли ==== -->
-    <div id="screen-role" class="space-y-3 fade-in hidden">
+    <div id="screen-role" class="screen-scroll space-y-3 fade-in hidden">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
             <h2 class="text-lg font-bold text-slate-900">Что делаем?</h2>
 
@@ -134,13 +134,34 @@
                 Продолжить
             </button>
         </div>
+
+        <!-- В режиме приложения с домашнего экрана страницу не перезагрузить
+             обычным способом, поэтому обновление вынесено кнопкой -->
+        <div class="text-center pt-2">
+            <button type="button" data-action="app-update"
+                    class="text-[11px] text-slate-400 hover:text-slate-600 underline">
+                Обновить приложение
+            </button>
+            <span id="app-version" class="block text-[10px] text-slate-300 mt-1"></span>
+        </div>
     </div>
 
     <!-- ==== Экран 1в: создание проверки (ведущий) ==== -->
-    <div id="screen-lead" class="space-y-4 fade-in hidden">
+    <div id="screen-lead" class="screen-scroll space-y-4 fade-in hidden">
 
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
             <h2 class="text-lg font-bold text-slate-900">Новая проверка</h2>
+
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                    <label for="lead-api" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Сервер синхронизации</label>
+                    <button type="button" data-action="lead-ping"
+                            class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800">проверить связь</button>
+                </div>
+                <input type="url" id="lead-api" autocomplete="off" spellcheck="false"
+                       class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-[11px] font-mono focus:ring-2 focus:ring-indigo-500">
+                <p id="lead-api-status" class="text-[10px] text-slate-400"></p>
+            </div>
 
             <div id="lead-key-row" class="space-y-1.5">
                 <label for="lead-key" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ключ ведущего</label>
@@ -214,7 +235,7 @@
     </div>
 
     <!-- ==== Экран 1г: сводка ведущего ==== -->
-    <div id="screen-board" class="space-y-4 fade-in hidden">
+    <div id="screen-board" class="screen-scroll space-y-4 fade-in hidden">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 text-center space-y-2">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Код проверки</div>
             <div id="board-code" class="text-3xl font-black tracking-widest text-slate-900 font-mono"></div>
@@ -247,7 +268,7 @@
     </div>
 
     <!-- ==== Экран 1д: присоединение ==== -->
-    <div id="screen-join" class="space-y-4 fade-in hidden">
+    <div id="screen-join" class="screen-scroll space-y-4 fade-in hidden">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
             <h2 class="text-lg font-bold text-slate-900">Присоединиться к проверке</h2>
 
@@ -291,7 +312,7 @@
     </div>
 
     <!-- ==== Экран 2: загрузка данных ==== -->
-    <div id="screen-upload" class="space-y-4 fade-in hidden">
+    <div id="screen-upload" class="screen-scroll space-y-4 fade-in hidden">
         <div id="restore-banner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
             <div class="flex items-center gap-2 text-amber-800">
                 <svg class="icon icon-24 text-amber-500 flex-shrink-0" aria-hidden="true"><use href="#i-history"></use></svg>
@@ -342,12 +363,7 @@
     </div>
 
     <!-- ==== Экран 3: маршрут ==== -->
-    <div id="screen-filter" class="space-y-4 fade-in hidden">
-
-        <!-- Сводка разбора файла: видно, какая колонка во что легла,
-             до того как проверка началась -->
-        <div id="import-summary" class="hidden bg-white border border-slate-200 rounded-2xl p-4"></div>
-
+    <div id="screen-filter" class="screen-scroll space-y-4 fade-in hidden">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <div class="border-b border-slate-100 pb-3">
                 <h2 class="text-lg font-bold text-slate-900">Настройки маршрута</h2>

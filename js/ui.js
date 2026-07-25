@@ -15,9 +15,10 @@ const CACHED_IDS = [
     'auth-password', 'auth-error', 'sync-badge',
 
     // выбор роли
-    'role-resume', 'role-resume-info',
+    'role-resume', 'role-resume-info', 'app-version',
 
     // создание проверки
+    'lead-api', 'lead-api-status',
     'lead-key-row', 'lead-key', 'lead-store', 'lead-network', 'lead-name',
     'lead-csv', 'lead-csv-info', 'lead-mode-hint', 'lead-checkers',
     'lead-coverage', 'lead-create-btn',
@@ -29,7 +30,7 @@ const CACHED_IDS = [
     'join-store', 'join-code', 'join-error', 'join-pick',
     'join-session-info', 'join-list', 'join-start-btn',
 
-    'csv-file', 'session-file', 'loading-msg', 'error-card', 'error-text', 'import-summary',
+    'csv-file', 'session-file', 'loading-msg', 'error-card', 'error-text',
     'restore-banner', 'restore-info',
     'filter-napravlenie', 'filter-tm', 'filter-pol',
     'view-image', 'view-napr', 'view-pol', 'view-tm-name', 'view-tovar', 'view-name',

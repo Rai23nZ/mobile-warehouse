@@ -19,7 +19,7 @@ import {
 import * as lead from './lead.js';
 
 import {
-    buildProducts, buildReport, compareProductsForRoute, HEADER_TITLES
+    buildProducts, buildReport, compareProductsForRoute
 } from './csv.js';
 
 import { REASONS, reasonLabel, reasonNeedsScan, NO_ARTICLE } from './reasons.js';
@@ -31,12 +31,16 @@ import {
     openModal, closeModal, isModalOpen, anyModalOpen,
     showToast, showError, hideError, showLoading, hideLoading,
     svgIcon, toggleImageZoom, isZoomOpen,
-    stamp, downloadBlob, escapeHtml, bindActions
+    stamp, downloadBlob, bindActions
 } from './ui.js';
 
 /* ── Регистрация Service Worker ───────────────────────────────────── */
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
+    /* updateViaCache: 'none' — браузер не должен брать сам sw.js из своего
+       HTTP-кэша, иначе обновление оболочки может не доехать до устройства
+       сутками. Плюс явная проверка обновления при каждом запуске. */
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+        .then(reg => reg.update().catch(() => {}))
         .catch(err => console.warn('Ошибка регистрации Service Worker:', err));
 
     /* Обновление оболочки: страница могла загрузиться с новым index.html,
@@ -148,6 +152,10 @@ function paintSyncBadge(s) {
 function goToWorkScreen() {
     showScreen('work');
     setStatusBadge(isStorageBroken() ? 'НЕ СОХРАНЯЕТСЯ' : defaultBadgeFor('work'), isStorageBroken());
+    /* Индикатор перерисовывается по событиям очереди, а при переходе между
+       режимами их не бывает: без этого он оставался бы висеть от прошлой
+       проверки при работе со своим файлом. */
+    refreshSyncState();
     renderProduct();
     prepareCatalog();       // справочник ШК нужен и после восстановления сессии
 }
@@ -205,12 +213,11 @@ async function handleCsvSelect(ev) {
     if (!file) return;
     showLoading(); hideError();
     try {
-        const { headers, idx, products, stats } = buildProducts(await file.text());
+        const { products } = buildProducts(await file.text());
         setProducts(products);
         hideLoading();
         showScreen('filter');
         setStatusBadge(defaultBadgeFor('filter'));
-        renderImportSummary(headers, idx, stats);
         populateFilters();
     } catch (err) {
         showError(err.message);
@@ -237,34 +244,6 @@ async function handleSessionFileSelect(ev) {
     } finally {
         ev.target.value = '';
     }
-}
-
-/* Сводка импорта: ошибка сопоставления колонок раньше обнаруживалась
-   только по мусору на рабочем экране, когда работа уже шла. */
-function renderImportSummary(headers, idx, stats) {
-    const box = el['import-summary'];
-    if (!box) return;
-
-    const mapped = Object.keys(HEADER_TITLES).map(k => {
-        const found = idx[k] !== -1;
-        return `<li class="flex justify-between gap-2">
-                  <span class="text-slate-500">${HEADER_TITLES[k]}</span>
-                  <span class="${found ? 'text-slate-800 font-semibold' : 'text-rose-600 font-semibold'}">
-                    ${found ? escapeHtml(headers[idx[k]]) : 'не найден'}
-                  </span>
-                </li>`;
-    }).join('');
-
-    box.innerHTML = `
-        <div class="font-bold text-sm text-slate-900 mb-2">Файл разобран</div>
-        <div class="text-xs text-slate-600 mb-3">
-            Артикулов: <b>${stats.products}</b> · строк с участками: <b>${stats.zoneRows}</b>
-            ${stats.skipped ? ` · пропущено строк без артикула: <b>${stats.skipped}</b>` : ''}
-            ${stats.noZones ? `<br><span class="text-amber-700">Без участков сканирования: <b>${stats.noZones}</b> — они сразу считаются закрытыми.</span>` : ''}
-        </div>
-        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Сопоставление колонок</div>
-        <ul class="text-xs space-y-1">${mapped}</ul>`;
-    box.classList.remove('hidden');
 }
 
 /* ── Фильтры ──────────────────────────────────────────────────────── */
@@ -868,6 +847,7 @@ const ACTIONS = {
     },
 
     // выбор роли
+    'app-update'  : forceUpdate,
     'role-lead'   : () => lead.showLeadScreen(),
     'role-join'   : () => lead.showJoinScreen(),
     'role-solo'   : () => { showScreen('upload'); setStatusBadge(defaultBadgeFor('upload')); checkRestorable(); },
@@ -878,6 +858,7 @@ const ACTIONS = {
     'lead-del'    : node => lead.removeChecker(Number(node.dataset.checker)),
     'lead-back'   : () => lead.showRoleScreen(resumeLabel()),
     'lead-create' : () => lead.createSession(),
+    'lead-ping'   : () => lead.pingServer(),
 
     // сводка ведущего
     'board-refresh': () => lead.refreshBoard(),
@@ -893,6 +874,42 @@ const ACTIONS = {
         if (code) lead.applyScannedJoin(code);
     }
 };
+
+/* Версия оболочки берётся у Service Worker: по ней сразу видно, доехало
+   обновление до устройства или нет. Без этого «обновилось или нет»
+   приходится выяснять по косвенным признакам. */
+async function showAppVersion() {
+    const node = el['app-version'];
+    if (!node) return;
+    try {
+        const keys = window.caches ? await caches.keys() : [];
+        const shell = keys.find(k => k.startsWith('shell-'));
+        node.textContent = shell ? 'версия ' + shell.replace('shell-', '') : 'версия не определена';
+    } catch (e) {
+        node.textContent = '';
+    }
+}
+
+/* Принудительное обновление: сносим кэш оболочки и Service Worker,
+   затем перезагружаемся. Сохранённая работа и очередь отправки лежат в
+   localStorage и не затрагиваются. */
+async function forceUpdate() {
+    if (!confirm('Загрузить свежую версию приложения?\nСохранённая работа не пострадает.')) return;
+    try {
+        flushSave();
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(r => r.unregister()));
+        }
+        if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.filter(k => k.startsWith('shell-')).map(k => caches.delete(k)));
+        }
+    } catch (e) {
+        console.warn('forceUpdate:', e);
+    }
+    location.reload(true);
+}
 
 /* ── Завершение смены ─────────────────────────────────────────────────
    Отчёт сначала оказывается на устройстве, и лишь потом отдельным
@@ -929,6 +946,7 @@ async function finishAndErase() {
         resetQueue();
         setSession(null);
         clearSaved();
+        refreshSyncState();          // убираем индикатор: проверки больше нет
         showToast('Проверка завершена, данные стёрты', 3000);
         lead.showRoleScreen(null);
     } catch (e) {
@@ -973,6 +991,8 @@ function init() {
     el['join-code'].addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); lead.findSession(); }
     });
+
+    showAppVersion();
 
     if (sessionStorage.getItem('wh_auth_passed') === 'true') lead.showRoleScreen(resumeLabel());
     else showScreen('auth');

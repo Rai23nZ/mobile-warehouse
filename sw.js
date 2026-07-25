@@ -9,7 +9,7 @@
    При изменении файлов оболочки поднимать SHELL_VERSION.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const SHELL_VERSION = 'shell-v7';
+const SHELL_VERSION = 'shell-v8';
 const IMG_CACHE     = 'imgs-v1';
 const DATA_CACHE    = 'data-v1';
 const MAX_IMAGES    = 1500;          // мягкий предел, чтобы кэш не рос бесконечно
@@ -80,12 +80,32 @@ self.addEventListener('fetch', event => {
 
     const isImage = req.destination === 'image' || /\.(jpe?g|png|webp|gif|svg)$/i.test(url.pathname);
     const isData  = url.pathname.includes('/data/');
+    /* Код и стили должны быть той же версии, что и разметка. Раньше HTML
+       брался из сети, а модули из кэша — и первая загрузка после каждого
+       обновления могла смешать новую разметку со старым кодом. Теперь они
+       обновляются вместе; офлайн по-прежнему работает из кэша. */
+    const isCode  = /\/(js|css)\/[^/]+\.(js|css)$/i.test(url.pathname);
 
     if (isImage)                      event.respondWith(handleImage(req));
     else if (isData)                  event.respondWith(handleData(req));
     else if (req.mode === 'navigate') event.respondWith(handleNavigate(req));
+    else if (isCode)                  event.respondWith(handleCode(req));
     else                              event.respondWith(handleAsset(req));
 });
+
+/* Сначала сеть, кэш — запасной путь. Вендоренные библиотеки сюда не
+   попадают: они не меняются и остаются на кэш-первом пути. */
+async function handleCode(req) {
+    const cache = await caches.open(SHELL_VERSION);
+    try {
+        const res = await fetch(req);
+        if (res && res.ok) cache.put(req, res.clone());
+        return res;
+    } catch (e) {
+        const cached = await cache.match(req, { ignoreSearch: true });
+        return cached || offlineResponse();
+    }
+}
 
 /* Справочники товаров: сначала сеть, кэш — как запасной вариант.
    База дополняется по несколько раз в неделю, и обновление должно

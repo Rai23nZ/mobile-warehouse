@@ -224,6 +224,7 @@ img { max-width: 100%; height: auto; }
 .tracking-widest  { letter-spacing: .1em; }
 
 .uppercase   { text-transform: uppercase; }
+.underline   { text-decoration: underline; }
 .text-center { text-align: center; }
 .text-left   { text-align: left; }
 .text-right  { text-align: right; }
@@ -245,6 +246,7 @@ img { max-width: 100%; height: auto; }
 .text-white\/70  { color: rgb(255 255 255 / .7); }
 .text-white\/90  { color: rgb(255 255 255 / .9); }
 .text-rose-200   { color: var(--rose-200); }
+.text-slate-300  { color: var(--slate-300); }
 .text-slate-400  { color: var(--slate-400); }
 .text-slate-500  { color: var(--slate-500); }
 .text-slate-600  { color: var(--slate-600); }
@@ -378,6 +380,7 @@ img { max-width: 100%; height: auto; }
     .hover\:bg-rose-600:hover   { background-color: var(--rose-600); }
     .hover\:bg-amber-600:hover  { background-color: var(--amber-600); }
     .hover\:text-indigo-800:hover { color: var(--indigo-800); }
+    .hover\:text-slate-600:hover  { color: var(--slate-600); }
     .hover\:file\:bg-indigo-100:hover::file-selector-button  { background-color: var(--indigo-100); }
     .hover\:file\:bg-emerald-100:hover::file-selector-button { background-color: var(--emerald-100); }
 }
@@ -472,6 +475,22 @@ html, body { overscroll-behavior-y: none; }
 .custom-scroll::-webkit-scrollbar { width: 4px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
 .custom-scroll::-webkit-scrollbar-thumb { background-color: var(--slate-300); border-radius: 10px; }
+
+/* Прокручиваемые полноэкранные формы (авторизация, роль, создание проверки,
+   сводка ведущего, присоединение, загрузка файла, маршрут).
+   <main> задан как overflow-hidden flex flex-col, поэтому без этого класса
+   всё, что не влезает по высоте — включая кнопки запуска внизу формы —
+   обрезается и становится недостижимым. Класс упоминался в разметке и
+   раньше, но нигде не был объявлен. */
+.screen-scroll {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.screen-scroll::-webkit-scrollbar { width: 4px; }
+.screen-scroll::-webkit-scrollbar-track { background: transparent; }
+.screen-scroll::-webkit-scrollbar-thumb { background-color: var(--slate-300); border-radius: 10px; }
 
 /* Плитка выбора торговой сети (было `[&:has(input:checked)]:…` в разметке) */
 .net-option {

@@ -12,13 +12,13 @@
    право читать данные смены — код проверки вместе с номером магазина.
    ═══════════════════════════════════════════════════════════════════════ */
 
-export const DEFAULT_API = 'https://warehouse-sync.cloudflare-uncommon.workers.dev';
+export const DEFAULT_API = 'https://warehouse-sync.ru';
 
 const LS_API      = 'wh_api_base';
 const LS_QUEUE    = 'wh_sync_queue';
 const LS_LEAD_TOK = 'wh_lead_token';       // + код проверки
 
-const REQUEST_TIMEOUT = 20000;             // мобильная сеть умеет висеть молча
+const REQUEST_TIMEOUT = 25000;             // мобильная сеть умеет висеть молча
 const BATCH_ROWS      = 100;               // предел сервера на одну отправку
 const RETRY_MS        = [3000, 8000, 20000, 45000];
 
@@ -44,7 +44,18 @@ async function request(path, { method = 'GET', headers = {}, body, raw = false }
     try {
         res = await fetch(apiBase + path, { method, headers, body, signal: ac.signal });
     } catch (e) {
-        throw new HttpError(0, e.name === 'AbortError' ? 'Сервер не ответил вовремя' : 'Нет связи с сервером');
+        /* Различаем два похожих на вид случая: у устройства нет сети —
+           и сеть есть, но до сервера не достучаться. Второе на практике
+           означает, что адрес недоступен из этой сети (блокировка,
+           корпоративный фильтр, DNS). */
+        if (e.name === 'AbortError') {
+            throw new HttpError(0, navigator.onLine
+                ? 'Сервер не ответил за 25 с. Возможно, его адрес недоступен из этой сети'
+                : 'Нет подключения к интернету');
+        }
+        throw new HttpError(0, navigator.onLine
+            ? 'Не удалось связаться с сервером. Проверьте адрес и доступность сети'
+            : 'Нет подключения к интернету');
     } finally {
         clearTimeout(timer);
     }

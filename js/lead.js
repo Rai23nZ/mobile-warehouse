@@ -63,6 +63,9 @@ export function showLeadScreen() {
     showScreen('lead');
     setStatusBadge(defaultBadgeFor('lead'));
 
+    el['lead-api'].value = api.getApiBase();
+    el['lead-api-status'].textContent = '';
+
     const savedKey = localStorage.getItem(LS_LEAD_KEY) || '';
     el['lead-key'].value = savedKey;
     el['lead-key-row'].classList.toggle('hidden', !!savedKey);
@@ -74,6 +77,25 @@ export function showLeadScreen() {
     }
     renderModeHint();
     renderCheckers();
+}
+
+/* Проверка связи с сервером до того, как ведущий соберёт все наряды и
+   упрётся в молчание при создании проверки. */
+export async function pingServer() {
+    const url = el['lead-api'].value.trim();
+    if (url) api.setApiBase(url);
+    const out = el['lead-api-status'];
+    out.textContent = 'Проверка…';
+    const t0 = performance.now();
+    try {
+        const r = await api.health();
+        const ms = Math.round(performance.now() - t0);
+        out.textContent = r && r.ok
+            ? `✅ сервер отвечает за ${ms} мс · ${r.db}`
+            : '⚠️ странный ответ сервера';
+    } catch (e) {
+        out.textContent = '❌ ' + e.message;
+    }
 }
 
 export function setMode(mode) {
