@@ -99,7 +99,7 @@ export function startSecondRound() {
 }
 
 export function setProducts(products) {
-    store.byId        = new Map(products.map(p => [p.tovar, p]));
+    store.byId        = new Map(products.map(p => [p.id || p.tovar, p]));
     store.order       = [];
     store.initialOrder = [];
     store.currentIndex = 0;
@@ -128,8 +128,9 @@ export function serialize() {
 export function deserialize(p) {
     if (!p || !Array.isArray(p.products)) throw new Error('неизвестный формат данных');
     const products = p.products.filter(x => x && x.tovar);
-    products.forEach(prod => (prod.zones || []).forEach(withZoneFields));  // добор полей v3/v4
-    store.byId = new Map(products.map(x => [x.tovar, x]));
+    products.forEach(prod => (prod.zones || []).forEach(withZoneFields));  
+    
+    store.byId = new Map(products.map(x => [x.id || x.tovar, x]));
     if (!store.byId.size) throw new Error('в файле нет ни одного товара');
 
     const known = k => store.byId.has(k);
@@ -146,8 +147,10 @@ export function deserialize(p) {
    пересчитан по своим участкам (см. js/assign.js). */
 export function setPoolFromServer(pool, session) {
     pool.forEach(p => (p.zones || []).forEach(withZoneFields));
-    store.byId = new Map(pool.map(p => [p.tovar, p]));
-    const keys = pool.map(p => p.tovar);
+    
+    store.byId = new Map(pool.map(p => [p.id || p.tovar, p]));
+    const keys = pool.map(p => p.id || p.tovar);
+    
     store.order        = keys;
     store.initialOrder = [...keys];
     store.currentIndex = 0;

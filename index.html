@@ -515,10 +515,18 @@
                 </button>
             </div>
 
-            <button type="button" data-action="export"
+            <!-- Кнопка экспорта (для автономного режима) -->
+            <button type="button" id="btn-footer-export" data-action="export"
                     class="w-full bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2 text-sm mt-1"
                     style="padding:8px 14px;">
                 <svg class="icon icon-20" aria-hidden="true"><use href="#i-download"></use></svg> Экспорт отчёта
+            </button>
+
+            <!-- Кнопка завершения (для синхронного режима) -->
+            <button type="button" id="btn-footer-finish" data-action="finish-sync"
+                    class="hidden w-full bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2 text-sm mt-1"
+                    style="padding:8px 14px;">
+                <svg class="icon icon-20" aria-hidden="true"><use href="#i-save"></use></svg> Завершить проверку
             </button>
 
             <div class="flex flex-col pt-1 gap-2">
@@ -678,8 +686,12 @@
         <div class="flex gap-3">
             <button type="button" data-action="alldone-close"
                     class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Остаться</button>
-            <button type="button" data-action="alldone-export"
+            
+            <button type="button" id="btn-modal-export" data-action="alldone-export"
                     class="flex-1 py-3 px-4 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition">Скачать отчёт</button>
+            
+            <button type="button" id="btn-modal-finish" data-action="alldone-finish"
+                    class="hidden flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition">Завершить</button>
         </div>
     </div>
 </div>

@@ -168,6 +168,13 @@ function goToWorkScreen() {
     refreshSyncState();
     renderProduct();
     prepareCatalog();       // справочник ШК нужен и после восстановления сессии
+    
+    // ОБНОВЛЕНИЕ: Переключаем видимость кнопок экспорта/завершения в футере
+    const isSync = inSession();
+    const btnFooterExport = document.getElementById('btn-footer-export');
+    const btnFooterFinish = document.getElementById('btn-footer-finish');
+    if (btnFooterExport) btnFooterExport.classList.toggle('hidden', isSync);
+    if (btnFooterFinish) btnFooterFinish.classList.toggle('hidden', !isSync);
 }
 
 /* ── Восстановление сессии ────────────────────────────────────────── */
@@ -758,6 +765,14 @@ function showAllDoneModal() {
     const withIssues = list.filter(p => p.zones.some(z => z.status === 'not_confirmed')).length;
     el['allDoneText'].textContent =
         `Всего: ${list.length}. Без замечаний: ${list.length - withIssues}. С расхождениями: ${withIssues}.`;
+    
+    // ОБНОВЛЕНИЕ: Переключаем видимость кнопок экспорта/завершения в окне
+    const isSync = inSession();
+    const btnModalExport = document.getElementById('btn-modal-export');
+    const btnModalFinish = document.getElementById('btn-modal-finish');
+    if (btnModalExport) btnModalExport.classList.toggle('hidden', isSync);
+    if (btnModalFinish) btnModalFinish.classList.toggle('hidden', !isSync);
+
     openModal('allDoneModal');
 }
 
@@ -777,6 +792,37 @@ function exportDiscrepancies() {
 
     downloadBlob(report.text, 'text/csv;charset=utf-8;', `errors_${stamp()}.csv`);
     showToast(`✅ Экспорт: расхождений ${report.issues}, не проверено ${report.pending}`, 3500);
+}
+
+async function finishSyncVerification() {
+    if (!inSession()) return;
+    
+    // Защита от попытки сдать работу без интернета (иначе статус не дойдет до ведущего)
+    if (!navigator.onLine) {
+        showToast('⚠️ Нет сети! Для завершения проверки нужно подключение.', 4000);
+        return;
+    }
+
+    const btn = document.getElementById('btn-footer-finish');
+    const originalText = btn ? btn.textContent : '';
+
+    try {
+        if (btn) btn.textContent = 'Завершение...';
+        showToast('Отправка финальных данных ведущему...', 2000);
+        
+        // Отправляем на сервер статус "done" и время окончания
+        await sendAssignmentState('done', { finishedAt: new Date().toISOString() });
+        await flushQueue(); // Принудительно проталкиваем остатки очереди
+        
+        showToast('✅ Проверка успешно завершена!', 3000);
+        if (isModalOpen('allDoneModal')) closeModal('allDoneModal');
+        
+        // Возвращаем на стартовый экран через небольшую паузу
+        setTimeout(() => goHome(true), 1500); 
+    } catch (e) {
+        showToast('Ошибка при завершении: ' + e.message, 5000);
+        if (btn) btn.textContent = originalText;
+    }
 }
 
 function copyBarcode() {
@@ -831,11 +877,13 @@ const ACTIONS = {
     'prev'          : prevProduct,
     'next'          : nextProductManual,
     'export'        : exportDiscrepancies,
+    'finish-sync'   : finishSyncVerification, // <--- Добавлено
     'copy'          : copyBarcode,
     'zoom-open'     : () => toggleImageZoom(true),
     'zoom-close'    : () => toggleImageZoom(false),
     'alldone-close' : () => closeModal('allDoneModal'),
     'alldone-export': () => { exportDiscrepancies(); closeModal('allDoneModal'); },
+    'alldone-finish': () => finishSyncVerification(), // <--- Добавлено
 
     // окно «Не подтверждено»
     'pick-reason'   : node => pickReason(node.dataset.reason),

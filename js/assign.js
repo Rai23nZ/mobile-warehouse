@@ -16,7 +16,7 @@
    Чистые функции без обращений к DOM и к сети.
    ═══════════════════════════════════════════════════════════════════════ */
 
-import { compareZones } from './csv.js';
+import { compareZones, compareProductsForRoute } from './csv.js';
 
 export const MODE_NAPR = 'napr';
 export const MODE_UCH  = 'uch';
@@ -66,15 +66,33 @@ function cloneZone(z) {
 export function poolForZones(products, zoneKeys) {
     const want = zoneKeys instanceof Set ? zoneKeys : new Set(zoneKeys);
     const pool = [];
+    
     for (const p of products) {
         const zones = p.zones.filter(z => want.has(z.uch)).map(cloneZone);
         if (!zones.length) continue;
-        pool.push({
-            tovar: p.tovar, name: p.name, tm: p.tm, napr: p.napr, pol: p.pol,
-            ost_plan: zones.reduce((s, z) => s + z.kol, 0),
-            zones
-        });
+        
+        /* РАЗДЕЛЕНИЕ: каждый участок становится отдельным шагом маршрута.
+           Создаем уникальный ID, чтобы Map в store.js не перезаписал артикул */
+        for (const z of zones) {
+            pool.push({
+                id: p.tovar + '::' + z.uch,
+                tovar: p.tovar, 
+                name: p.name, 
+                tm: p.tm, 
+                napr: p.napr, 
+                pol: p.pol,
+                ost_plan: z.kol,
+                zones: [z]
+            });
+        }
     }
+    
+    /* СТРОГАЯ СОРТИРОВКА: по участкам, а при совпадении — по артикулу */
+    pool.sort((a, b) => {
+        const cmp = compareZones({ uch: a.zones[0].uch }, { uch: b.zones[0].uch });
+        return cmp !== 0 ? cmp : a.tovar.localeCompare(b.tovar, undefined, { numeric: true });
+    });
+    
     return pool;
 }
 
@@ -82,10 +100,12 @@ export function poolForZones(products, zoneKeys) {
 export function poolForFilter(products, spec) {
     const { napr, tm, pol } = spec || {};
     const pool = [];
+    
     for (const p of products) {
         if (napr && p.napr !== napr) continue;
         if (tm   && p.tm   !== tm)   continue;
         if (pol  && p.pol  !== pol)  continue;
+        
         const zones = p.zones.map(cloneZone);
         pool.push({
             tovar: p.tovar, name: p.name, tm: p.tm, napr: p.napr, pol: p.pol,
@@ -93,6 +113,9 @@ export function poolForFilter(products, spec) {
             zones
         });
     }
+    
+    /* СОРТИРОВКА ПО НАПРАВЛЕНИЮ: карточка ориентируется на первый (наименьший) участок */
+    pool.sort(compareProductsForRoute);
     return pool;
 }
 
