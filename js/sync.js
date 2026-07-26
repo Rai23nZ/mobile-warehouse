@@ -18,9 +18,10 @@
    вести на один и тот же Worker с одной и той же D1-базой — это не
    разные серверы, а разные пути к одному. */
 export const API_CANDIDATES = [
-    'https://second.reserveroute.online',   // резервный route
+    'https://ru.warehouse-sync.ru',   // reg.ru сервер
     'https://warehouse-sync.ru',
     'https://sync.warehouse-sync.ru',   // резервный route
+    'https://second.reserveroute.online',   // резервный route
     // 'https://reserveroute.online',
     'https://api.reserveroute.ru',
     'https://warehouse-sync.cloudflare-uncommon.workers.dev', // как крайний случай

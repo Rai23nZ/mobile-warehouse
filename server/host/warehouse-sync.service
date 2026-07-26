@@ -1,0 +1,40 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Служба systemd: сервер поднимается сам после перезагрузки и
+# перезапускается, если процесс упал.
+#
+# Файл кладётся в /etc/systemd/system/warehouse-sync.service
+# ═══════════════════════════════════════════════════════════════════════
+
+[Unit]
+Description=Сервер синхронизации «Контрольная проверка»
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=warehouse
+Group=warehouse
+WorkingDirectory=/opt/warehouse-sync
+
+# Ключи ведущих и путь к базе лежат отдельным файлом с правами 600,
+# чтобы не попасть в журнал и в список процессов
+EnvironmentFile=/etc/warehouse-sync.env
+
+ExecStart=/usr/local/bin/bun run /opt/warehouse-sync/server/host/main.js
+
+Restart=always
+RestartSec=3
+
+# Ограничения: службе нужен только свой каталог
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/warehouse-sync/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=warehouse-sync
+
+[Install]
+WantedBy=multi-user.target
