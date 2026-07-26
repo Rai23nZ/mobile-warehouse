@@ -12,17 +12,38 @@
    право читать данные смены — код проверки вместе с номером магазина.
    ═══════════════════════════════════════════════════════════════════════ */
 
-export const DEFAULT_API = 'https://sync.warehouse-sync.ru';
+/* Несколько адресов, ведущих на один и тот же Worker. Первый — основной,
+   остальные — на случай, если конкретный домен окажется недоступен из
+   сети пользователя (блокировка по SNI/DNS и т.п.). Все адреса должны
+   вести на один и тот же Worker с одной и той же D1-базой — это не
+   разные серверы, а разные пути к одному. */
+export const API_CANDIDATES = [
+    'https://warehouse-sync.ru',
+    'https://sync.warehouse-sync.ru',   // резервный route
+    // 'https://reserveroute.online',
+    'https://second.reserveroute.online',   // резервный route
+    'https://api.reserveroute.ru',
+    'https://warehouse-sync.cloudflare-uncommon.workers.dev', // как крайний случай
+];
+
+export const DEFAULT_API = API_CANDIDATES[0];
 
 const LS_API      = 'wh_api_base';
 const LS_QUEUE    = 'wh_sync_queue';
 const LS_LEAD_TOK = 'wh_lead_token';       // + код проверки
 
-const REQUEST_TIMEOUT = 25000;             // мобильная сеть умеет висеть молча
-const BATCH_ROWS      = 100;               // предел сервера на одну отправку
-const RETRY_MS        = [3000, 8000, 20000, 45000];
+const REQUEST_TIMEOUT   = 25000;           // мобильная сеть умеет висеть молча
+const PROBE_TIMEOUT     = 8000;            // проверка запасных адресов — короче,
+                                            // это обычно быстрый отказ (DNS/TCP),
+                                            // а не зависание
+const BATCH_ROWS        = 100;             // предел сервера на одну отправку
+const RETRY_MS          = [3000, 8000, 20000, 45000];
 
+/* Текущий рабочий адрес запоминается на устройстве: один раз найдя
+   доступный домен, при следующих запусках сразу идём в него, а не
+   перебираем заново с первого. */
 let apiBase = localStorage.getItem(LS_API) || DEFAULT_API;
+if (!API_CANDIDATES.includes(apiBase)) apiBase = DEFAULT_API;
 
 export const getApiBase = () => apiBase;
 export function setApiBase(url) {
@@ -37,20 +58,20 @@ class HttpError extends Error {
 }
 export { HttpError };
 
-async function request(path, { method = 'GET', headers = {}, body, raw = false } = {}) {
+/* Один запрос к конкретному адресу base. Ничего не знает о переборе —
+   просто пытается достучаться и бросает HttpError(0, ...) при любой
+   сетевой проблеме (в отличие от HttpError с ненулевым status — это
+   ответ сервера, значит адрес рабочий). */
+async function fetchOnce(base, path, { method = 'GET', headers = {}, body, raw = false } = {}, timeout = REQUEST_TIMEOUT) {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT);
+    const timer = setTimeout(() => ac.abort(), timeout);
     let res;
     try {
-        res = await fetch(apiBase + path, { method, headers, body, signal: ac.signal });
+        res = await fetch(base + path, { method, headers, body, signal: ac.signal });
     } catch (e) {
-        /* Различаем два похожих на вид случая: у устройства нет сети —
-           и сеть есть, но до сервера не достучаться. Второе на практике
-           означает, что адрес недоступен из этой сети (блокировка,
-           корпоративный фильтр, DNS). */
         if (e.name === 'AbortError') {
             throw new HttpError(0, navigator.onLine
-                ? 'Сервер не ответил за 25 с. Возможно, его адрес недоступен из этой сети'
+                ? 'Сервер не ответил вовремя. Возможно, его адрес недоступен из этой сети'
                 : 'Нет подключения к интернету');
         }
         throw new HttpError(0, navigator.onLine
@@ -68,6 +89,40 @@ async function request(path, { method = 'GET', headers = {}, body, raw = false }
     }
     if (raw) return text;
     try { return JSON.parse(text); } catch (e) { return text; }
+}
+
+/* Публичный уровень: сначала пробуем текущий рабочий адрес. Если он
+   недоступен на СЕТЕВОМ уровне (status === 0 — DNS/TCP/таймаут, а не
+   ответ сервера вроде 404/500), пробуем по очереди остальные кандидаты
+   с укороченным таймаутом. Как только один сработал — запоминаем его
+   как новый рабочий адрес и им же отвечаем на текущий запрос.
+
+   Если ответ пришёл именно ОТ сервера (status !== 0), переключаться
+   некуда и незачем: сервер найден, просто вернул ошибку (например,
+   протухший токен) — эту ошибку и нужно показать как есть. */
+async function request(path, opts = {}) {
+    try {
+        return await fetchOnce(apiBase, path, opts, REQUEST_TIMEOUT);
+    } catch (primaryErr) {
+        if (primaryErr.status !== 0) throw primaryErr;
+        if (API_CANDIDATES.length < 2) throw primaryErr;
+
+        for (const candidate of API_CANDIDATES) {
+            if (candidate === apiBase) continue;
+            try {
+                const result = await fetchOnce(candidate, path, opts, PROBE_TIMEOUT);
+                console.warn(`[sync] ${apiBase} недоступен, переключаюсь на ${candidate}`);
+                setApiBase(candidate);
+                return result;
+            } catch (e) {
+                continue; // этот тоже недоступен — пробуем следующий
+            }
+        }
+        /* Ни один адрес не ответил — возвращаем исходную ошибку,
+           она честнее всего описывает происходящее («нет сети» /
+           «сервер недоступен»). */
+        throw primaryErr;
+    }
 }
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
