@@ -12,7 +12,7 @@
    право читать данные смены — код проверки вместе с номером магазина.
    ═══════════════════════════════════════════════════════════════════════ */
 
-export const DEFAULT_API = 'https://warehouse-sync.ru';
+export const DEFAULT_API = 'https://sync.warehouse-sync.ru';
 
 const LS_API      = 'wh_api_base';
 const LS_QUEUE    = 'wh_sync_queue';
