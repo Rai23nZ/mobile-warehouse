@@ -9,7 +9,7 @@
    При изменении файлов оболочки поднимать SHELL_VERSION.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const SHELL_VERSION = 'shell-v13';
+const SHELL_VERSION = 'shell-v14';
 const IMG_CACHE     = 'imgs-v2';
 const DATA_CACHE    = 'data-v1';
 const MAX_IMAGES    = 1500;          // мягкий предел, чтобы кэш не рос бесконечно

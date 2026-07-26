@@ -152,16 +152,18 @@
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
             <h2 class="text-lg font-bold text-slate-900">Новая проверка</h2>
 
-            <div class="space-y-1.5">
-                <div class="flex justify-between items-center">
-                    <label for="lead-api" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Сервер синхронизации</label>
-                    <button type="button" data-action="lead-ping"
-                            class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800">проверить связь</button>
-                </div>
-                <input type="url" id="lead-api" autocomplete="off" spellcheck="false"
-                       class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-[11px] font-mono focus:ring-2 focus:ring-indigo-500">
-                <p id="lead-api-status" class="text-[10px] text-slate-400"></p>
+            <!-- Адреса серверов намеренно не показываются: пользователю
+                 нужен факт наличия связи, а не список доменов -->
+            <div class="flex items-center gap-2">
+                <button type="button" data-action="lead-ping" id="lead-ping-btn"
+                        class="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-200 transition active:scale-[0.98]">
+                    Проверить связь
+                </button>
+                <span id="lead-probe-count"
+                      class="text-xs font-mono font-bold text-slate-400 tabular-nums">—/—</span>
+                <span id="lead-probe-lamp" class="probe-lamp" aria-hidden="true"></span>
             </div>
+            <p id="lead-api-status" class="text-[10px] text-slate-400"></p>
 
             <div id="lead-key-row" class="space-y-1.5">
                 <label for="lead-key" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ключ ведущего</label>
@@ -692,6 +694,32 @@
             
             <button type="button" id="btn-modal-finish" data-action="alldone-finish"
                     class="hidden flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition">Завершить</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ Подтверждение необратимого действия ══
+     Обычный confirm() здесь не годится: он снимается тем же касанием, что
+     и вызвало его, а цена ошибки — потерянная смена. Поэтому кнопка
+     подтверждения разблокируется только осознанной отметкой галочки. -->
+<div id="dangerModal" role="dialog" aria-modal="true" aria-labelledby="dangerTitle"
+     class="fixed inset-0 z-[105] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 fade-in">
+        <h3 id="dangerTitle" class="text-lg font-bold text-slate-900 mb-2"></h3>
+        <div id="dangerBody" class="text-xs text-slate-600 space-y-2 mb-4"></div>
+
+        <label class="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 cursor-pointer mb-4">
+            <input type="checkbox" id="dangerAgree" class="w-4 h-4 mt-0.5 flex-shrink-0">
+            <span id="dangerAgreeText" class="text-xs font-semibold text-amber-800"></span>
+        </label>
+
+        <div class="flex gap-3">
+            <button type="button" data-action="danger-cancel"
+                    class="flex-1 py-3 px-4 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition">
+                Отмена
+            </button>
+            <button type="button" data-action="danger-confirm" id="dangerConfirmBtn" disabled
+                    class="flex-1 py-3 px-4 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 transition"></button>
         </div>
     </div>
 </div>

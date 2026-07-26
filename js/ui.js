@@ -18,7 +18,7 @@ const CACHED_IDS = [
     'role-resume', 'role-resume-info', 'app-version',
 
     // создание проверки
-    'lead-api', 'lead-api-status',
+    'lead-api-status', 'lead-ping-btn', 'lead-probe-count', 'lead-probe-lamp',
     'lead-key-row', 'lead-key', 'lead-store', 'lead-network', 'lead-name',
     'lead-csv', 'lead-csv-info', 'lead-mode-hint', 'lead-checkers',
     'lead-coverage', 'lead-create-btn',
@@ -40,6 +40,7 @@ const CACHED_IDS = [
     'status-badge', 'btn-save-session',
     'toast', 'toast-text',
     'allDoneModal', 'allDoneText',
+    'dangerModal', 'dangerTitle', 'dangerBody', 'dangerAgree', 'dangerAgreeText', 'dangerConfirmBtn',
     'imageZoomOverlay', 'zoom-image-target',
 
     // окно «Не подтверждено»
@@ -123,7 +124,42 @@ export function isModalOpen(id) {
 }
 
 export function anyModalOpen() {
-    return isModalOpen('discrepancyModal') || isModalOpen('allDoneModal');
+    return isModalOpen('discrepancyModal') || isModalOpen('allDoneModal') || isModalOpen('dangerModal');
+}
+
+/* ── Подтверждение необратимого действия ───────────────────────────────
+   Возвращает промис: true — пользователь осознанно подтвердил,
+   false — отказался или закрыл окно.
+
+   Кнопка подтверждения заблокирована, пока не отмечена галочка. Это
+   защита именно от СЛУЧАЙНОГО касания: промахнуться по кнопке легко,
+   промахнуться по кнопке и галочке подряд — уже нет. */
+let dangerResolve = null;
+
+export function confirmDanger({ title, body, agreeText, confirmText }) {
+    return new Promise(resolve => {
+        dangerResolve = resolve;
+
+        el['dangerTitle'].textContent = title;
+        el['dangerBody'].innerHTML = (Array.isArray(body) ? body : [body])
+            .map(line => `<p>${line}</p>`).join('');
+        el['dangerAgreeText'].textContent = agreeText;
+        el['dangerConfirmBtn'].textContent = confirmText;
+
+        const box = el['dangerAgree'];
+        box.checked = false;
+        el['dangerConfirmBtn'].disabled = true;
+        box.onchange = () => { el['dangerConfirmBtn'].disabled = !box.checked; };
+
+        openModal('dangerModal');
+    });
+}
+
+export function resolveDanger(ok) {
+    closeModal('dangerModal');
+    const done = dangerResolve;
+    dangerResolve = null;
+    if (done) done(!!ok);
 }
 
 /* ── Тосты ─────────────────────────────────────────────────────────────

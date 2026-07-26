@@ -28,7 +28,7 @@ import { scanBarcode, SCAN_TYPE_QR, cancelScan, toggleTorch, isScannerOpen } fro
 
 import {
     el, cacheDom, showScreen, getScreen, defaultBadgeFor, setStatusBadge,
-    openModal, closeModal, isModalOpen, anyModalOpen,
+    openModal, closeModal, isModalOpen, anyModalOpen, confirmDanger, resolveDanger,
     showToast, showError, hideError, showLoading, hideLoading,
     svgIcon, toggleImageZoom, isZoomOpen,
     stamp, downloadBlob, bindActions
@@ -207,7 +207,31 @@ function restoreSession() {
     }
 }
 
-function clearSavedSession() {
+/* «Начать заново» стирает несданную работу без возможности вернуть её.
+   Кнопка стоит вплотную к «Восстановить», промахнуться просто. */
+async function clearSavedSession() {
+    let info = '';
+    try {
+        const p = loadStoredPayload();
+        if (p) {
+            const decided = p.products.reduce(
+                (n, pr) => n + (pr.zones || []).filter(z => z.status && z.status !== 'waiting').length, 0);
+            info = `Сохранено товаров: <b>${p.products.length}</b>, обработанных участков: <b>${decided}</b>.`;
+        }
+    } catch (e) { /* не смогли прочитать — обойдёмся без подробностей */ }
+
+    const ok = await confirmDanger({
+        title: 'Удалить сохранённый прогресс?',
+        body: [
+            info || 'На устройстве есть несданная работа.',
+            'Она будет стёрта безвозвратно. Если работа ещё нужна — нажмите «Отмена», ' +
+            'восстановите её и выгрузите снимок сессии.'
+        ],
+        agreeText  : 'Эта работа больше не нужна',
+        confirmText: 'Удалить'
+    });
+    if (!ok) return;
+
     clearSaved();
     el['restore-banner'].classList.add('hidden');
     showToast('Сохранённый прогресс удалён');
@@ -796,12 +820,35 @@ function exportDiscrepancies() {
 
 async function finishSyncVerification() {
     if (!inSession()) return;
-    
+
     // Защита от попытки сдать работу без интернета (иначе статус не дойдет до ведущего)
     if (!navigator.onLine) {
         showToast('⚠️ Нет сети! Для завершения проверки нужно подключение.', 4000);
         return;
     }
+
+    /* Сдача работы — необратимое действие: наряд помечается сданным, а
+       приложение уходит на стартовый экран. Кнопка расположена в футере
+       рядом с навигацией, задеть её легко, поэтому спрашиваем явно. */
+    const left = countUncheckedZones();
+    const body = [
+        `Наряд «<b>${store.session.checker}</b>», проверка <b>${store.session.code}</b>.`,
+        'Ведущий увидит вашу работу как сданную, и вы вернётесь на стартовый экран.'
+    ];
+    if (left) {
+        body.push(`<span class="text-rose-700">Не закрыто участков: <b>${left}</b>. ` +
+                  'В отчёте они пойдут как «НЕ ПРОВЕРЕНО».</span>');
+    } else {
+        body.push('Все участки вашего наряда обработаны.');
+    }
+
+    const go = await confirmDanger({
+        title      : 'Сдать проверку ведущему?',
+        body,
+        agreeText  : left ? 'Да, сдаю работу с незакрытыми участками' : 'Да, работа закончена',
+        confirmText: 'Сдать'
+    });
+    if (!go) { showToast('Продолжайте работу', 2000); return; }
 
     const btn = document.getElementById('btn-footer-finish');
     const originalText = btn ? btn.textContent : '';
@@ -823,6 +870,16 @@ async function finishSyncVerification() {
         showToast('Ошибка при завершении: ' + e.message, 5000);
         if (btn) btn.textContent = originalText;
     }
+}
+
+/* Сколько участков наряда осталось необработанными */
+function countUncheckedZones() {
+    let n = 0;
+    store.order.forEach(k => {
+        const p = store.byId.get(k);
+        if (p) p.zones.forEach(z => { if (z.status === 'waiting') n++; });
+    });
+    return n;
 }
 
 function copyBarcode() {
@@ -881,6 +938,8 @@ const ACTIONS = {
     'copy'          : copyBarcode,
     'zoom-open'     : () => toggleImageZoom(true),
     'zoom-close'    : () => toggleImageZoom(false),
+    'danger-cancel' : () => resolveDanger(false),
+    'danger-confirm': () => resolveDanger(true),
     'alldone-close' : () => closeModal('allDoneModal'),
     'alldone-export': () => { exportDiscrepancies(); closeModal('allDoneModal'); },
     'alldone-finish': () => finishSyncVerification(), // <--- Добавлено
@@ -976,10 +1035,33 @@ async function finishAndErase() {
     const ctx = lead.boardContext();
     if (!ctx) return;
 
-    const notDone = (ctx.assignments || []).filter(a => a.state !== 'done');
-    if (notDone.length && !confirm(
-        `Не отметились как сдавшие: ${notDone.map(a => a.checker).join(', ')}.\n` +
-        'Их результаты попадут в отчёт в том виде, в каком успели дойти. Продолжить?')) return;
+    /* Подтверждение обязано идти ПЕРЕД закрытием проверки. Раньше приём
+       результатов прекращался внутри finishSession() до любого вопроса —
+       одно случайное касание обрывало работу всем проверяющим сразу. */
+    await lead.refreshBoard();
+    const assignments = lead.boardContext().assignments || [];
+    const notDone = assignments.filter(a => a.state !== 'done');
+    const working = assignments.filter(a => a.state === 'in_progress');
+
+    const body = [
+        `Проверка <b>${ctx.code}</b>, магазин ${ctx.store}.`,
+        'После завершения сервер <b>перестанет принимать результаты от всех проверяющих</b>. Продолжить работу в этой смене будет нельзя.'
+    ];
+    if (working.length) {
+        body.push(`<span class="text-rose-700">Сейчас ещё работают: <b>${working.map(a => a.checker).join(', ')}</b>.</span>`);
+    }
+    if (notDone.length) {
+        body.push(`Не отметились как сдавшие: ${notDone.map(a => a.checker).join(', ')}. ` +
+                  'Их результаты попадут в отчёт в том виде, в каком успели дойти.');
+    }
+
+    const go = await confirmDanger({
+        title      : 'Завершить проверку для всех?',
+        body,
+        agreeText  : 'Я понимаю, что проверка закроется для всех участников',
+        confirmText: 'Завершить'
+    });
+    if (!go) { showToast('Проверка продолжается', 2500); return; }
 
     try {
         showToast('Сборка отчёта…', 6000);
@@ -990,14 +1072,18 @@ async function finishAndErase() {
         downloadBlob(res.coverageCsv, 'text/csv;charset=utf-8;', `покрытие_${res.stamp}_${stamp()}.csv`);
 
         const s = res.stat;
-        const ok = confirm(
-            `Отчёт скачан.\n\n` +
-            `Участков всего: ${s.total}\n` +
-            `Подтверждено: ${s.done}\n` +
-            `Расхождений: ${s.issues}\n` +
-            `Не проверено: ${s.pending}\n\n` +
-            `Удалить данные проверки с сервера? Отменить это будет нельзя.`
-        );
+        const ok = await confirmDanger({
+            title: 'Удалить данные с сервера?',
+            body: [
+                'Отчёт и файл покрытия уже скачаны на это устройство.',
+                `Участков всего: <b>${s.total}</b> · подтверждено: <b>${s.done}</b> · ` +
+                `расхождений: <b>${s.issues}</b> · не проверено: <b>${s.pending}</b>`,
+                'Истории проверок не ведётся: восстановить удалённое будет нечем. ' +
+                'Убедитесь, что оба файла действительно сохранились.'
+            ],
+            agreeText  : 'Файлы скачаны, данные на сервере больше не нужны',
+            confirmText: 'Удалить'
+        });
         if (!ok) { showToast('Данные оставлены на сервере', 3000); return; }
 
         await lead.eraseSession();
@@ -1067,6 +1153,7 @@ function init() {
         if (e.key !== 'Escape') return;
         if (isScannerOpen())                      cancelScan();
         else if (isZoomOpen())                    toggleImageZoom(false);
+        else if (isModalOpen('dangerModal'))      resolveDanger(false);   // Escape = отказ
         else if (isModalOpen('discrepancyModal')) closeModal('discrepancyModal');
         else if (isModalOpen('allDoneModal'))     closeModal('allDoneModal');
     });

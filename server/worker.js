@@ -68,6 +68,49 @@ function safeEqual(a, b) {
     return diff === 0;
 }
 
+/* ── Ключи ведущих ─────────────────────────────────────────────────────
+   У каждого специалиста свой ключ: потерянный или уволившийся отзывается
+   поодиночке, не затрагивая остальных, и по журналу видно, чьим ключом
+   заведена смена.
+
+   Секрет LEAD_KEYS — список через запятую или перенос строки. Элемент —
+   либо просто ключ, либо «метка:ключ»:
+
+       Петров:k7Xq2p…, Иванова:9Fh2Lm…, Сидоров:Qw8Zn4…
+
+   Метка нужна только для подсказки в интерфейсе («ключ принят: Петров»)
+   и в журнале — правом доступа она не является.
+
+   Старый одиночный секрет LEAD_KEY продолжает работать: если он задан,
+   считается ещё одним допустимым ключом. */
+function parseLeadKeys(env) {
+    const out = [];
+    const raw = (env.LEAD_KEYS || '').trim();
+    if (raw) {
+        raw.split(/[,\n;]+/).forEach(item => {
+            const s = item.trim();
+            if (!s) return;
+            const sep = s.indexOf(':');
+            if (sep > 0) out.push({ label: s.slice(0, sep).trim(), key: s.slice(sep + 1).trim() });
+            else out.push({ label: '', key: s });
+        });
+    }
+    if (env.LEAD_KEY) out.push({ label: '', key: String(env.LEAD_KEY).trim() });
+    return out.filter(x => x.key);
+}
+
+/* Возвращает { label } при совпадении, иначе null. Перебираются ВСЕ
+   элементы без раннего выхода: время ответа не должно зависеть от того,
+   на каком месте списка стоит угаданный ключ. */
+function matchLeadKey(env, presented) {
+    const keys = parseLeadKeys(env);
+    let found = null;
+    for (const k of keys) {
+        if (safeEqual(presented || '', k.key)) found = k;
+    }
+    return found;
+}
+
 const nowIso = () => new Date().toISOString();
 
 /* ── Доступ ─────────────────────────────────────────────────────────── */
@@ -104,9 +147,8 @@ async function requireLead(env, request, code) {
    { store, network, leadName, mode, masterName, masterHash,
      assignments: [{ checker, isLead, zoneSpec, items }] }               */
 async function createSession(request, env) {
-    if (!safeEqual(request.headers.get('X-Lead-Key') || '', env.LEAD_KEY || '')) {
-        return fail(403, 'Неверный ключ ведущего.');
-    }
+    const lead = matchLeadKey(env, request.headers.get('X-Lead-Key'));
+    if (!lead) return fail(403, 'Неверный ключ ведущего.');
     let body;
     try { body = await request.json(); } catch (e) { return fail(400, 'Тело запроса не разобрано.'); }
 
@@ -138,7 +180,8 @@ async function createSession(request, env) {
     });
 
     await env.DB.batch(stmts);
-    return json({ code, leadToken, createdAt: created });
+    console.log(`[create] код ${code}, магазин ${store}, ключ «${lead.label || 'без метки'}», ведущий ${leadName}`);
+    return json({ code, leadToken, createdAt: created, leadLabel: lead.label || '' });
 }
 
 /* POST /session/:code/pool/:idx/:part   — заголовок X-Lead-Token
@@ -400,7 +443,13 @@ export default {
                     const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions').first();
                     db = 'база привязана, активных проверок: ' + r.n;
                 } catch (e) { db = 'ОШИБКА БАЗЫ: ' + e.message; }
-                return json({ ok: true, db, leadKey: env.LEAD_KEY ? 'секрет задан' : 'СЕКРЕТ НЕ ЗАДАН', time: nowIso() });
+                const keys = parseLeadKeys(env);
+                return json({
+                    ok: true, db,
+                    leadKey: keys.length ? `ключей ведущих: ${keys.length}` : 'КЛЮЧИ НЕ ЗАДАНЫ',
+                    leads  : keys.map(k => k.label).filter(Boolean),   // только метки, не ключи
+                    time: nowIso()
+                });
             }
 
             if (parts[0] !== 'session') return fail(404, 'Неизвестный путь.');

@@ -18,10 +18,10 @@
    вести на один и тот же Worker с одной и той же D1-базой — это не
    разные серверы, а разные пути к одному. */
 export const API_CANDIDATES = [
+    'https://second.reserveroute.online',   // резервный route
     'https://warehouse-sync.ru',
     'https://sync.warehouse-sync.ru',   // резервный route
     // 'https://reserveroute.online',
-    'https://second.reserveroute.online',   // резервный route
     'https://api.reserveroute.ru',
     'https://warehouse-sync.cloudflare-uncommon.workers.dev', // как крайний случай
 ];
@@ -128,6 +128,53 @@ async function request(path, opts = {}) {
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
 export const health = () => request('/health');
+
+/* ── Явный перебор адресов ─────────────────────────────────────────────
+   Адреса нигде не показываются: пользователю видны только номер по
+   порядку и результат. Перебор идёт строго по списку, чтобы номер в
+   счётчике всегда означал одно и то же.
+
+   onStep(номер, всего, состояние) — состояние: 'probing' | 'ok' | 'fail'
+   Возвращает { ok, index, total }. Первый ответивший адрес становится
+   текущим. */
+export async function probeServers(onStep) {
+    const total = API_CANDIDATES.length;
+    for (let i = 0; i < total; i++) {
+        const base = API_CANDIDATES[i];
+        onStep && onStep(i + 1, total, 'probing');
+        try {
+            const res = await fetchOnce(base, '/health', {}, PROBE_TIMEOUT);
+            if (!res || res.ok !== true) throw new HttpError(0, 'не похоже на наш сервер');
+            setApiBase(base);
+            serverConfirmed = true;
+            onStep && onStep(i + 1, total, 'ok');
+            return { ok: true, index: i + 1, total, info: res };
+        } catch (e) {
+            onStep && onStep(i + 1, total, 'fail');
+        }
+    }
+    serverConfirmed = false;
+    return { ok: false, index: 0, total };
+}
+
+/* Флаг «в этом запуске приложения рабочий адрес уже подтверждён» —
+   чтобы не гонять полный перебор перед каждым действием. */
+let serverConfirmed = false;
+export const isServerConfirmed = () => serverConfirmed;
+
+/* Перед важным действием: если адрес ещё не подтверждён, пробуем текущий
+   одним быстрым запросом, и лишь при неудаче перебираем остальные. */
+export async function ensureServer(onStep) {
+    if (serverConfirmed) return { ok: true, index: API_CANDIDATES.indexOf(apiBase) + 1, total: API_CANDIDATES.length };
+    try {
+        const res = await fetchOnce(apiBase, '/health', {}, PROBE_TIMEOUT);
+        if (res && res.ok === true) {
+            serverConfirmed = true;
+            return { ok: true, index: API_CANDIDATES.indexOf(apiBase) + 1, total: API_CANDIDATES.length };
+        }
+    } catch (e) { /* переходим к полному перебору */ }
+    return probeServers(onStep);
+}
 
 /* ── Хранение права ведущего ───────────────────────────────────────────
    Токен живёт только на устройстве ведущего и намеренно НЕ попадает в

@@ -63,8 +63,7 @@ export function showLeadScreen() {
     showScreen('lead');
     setStatusBadge(defaultBadgeFor('lead'));
 
-    el['lead-api'].value = api.getApiBase();
-    el['lead-api-status'].textContent = '';
+    resetProbeIndicator();
 
     const savedKey = localStorage.getItem(LS_LEAD_KEY) || '';
     el['lead-key'].value = savedKey;
@@ -79,22 +78,52 @@ export function showLeadScreen() {
     renderCheckers();
 }
 
-/* Проверка связи с сервером до того, как ведущий соберёт все наряды и
-   упрётся в молчание при создании проверки. */
+/* ── Состояние связи ───────────────────────────────────────────────────
+   Показываем только номер проверяемого адреса и огонёк. Сами адреса
+   пользователю не нужны и на экран не выводятся. */
+function paintProbe(index, total, state) {
+    const count = el['lead-probe-count'];
+    const lamp  = el['lead-probe-lamp'];
+    if (count) count.textContent = `${index || '—'}/${total || '—'}`;
+    if (!lamp) return;
+    lamp.className = 'probe-lamp' +
+        (state === 'probing' ? ' is-probing' : state === 'ok' ? ' is-ok' : state === 'fail' ? ' is-fail' : '');
+}
+
+/* Перебор по кнопке. Огонёк мигает на каждом проверяемом адресе,
+   останавливается зелёным на первом рабочем. */
 export async function pingServer() {
-    const url = el['lead-api'].value.trim();
-    if (url) api.setApiBase(url);
     const out = el['lead-api-status'];
-    out.textContent = 'Проверка…';
+    const btn = el['lead-ping-btn'];
+    btn.disabled = true;
+    out.textContent = 'Перебираю адреса…';
+
     const t0 = performance.now();
-    try {
-        const r = await api.health();
+    const res = await api.probeServers((i, n, state) => paintProbe(i, n, state));
+    btn.disabled = false;
+
+    if (res.ok) {
         const ms = Math.round(performance.now() - t0);
-        out.textContent = r && r.ok
-            ? `✅ сервер отвечает за ${ms} мс · ${r.db}`
-            : '⚠️ странный ответ сервера';
-    } catch (e) {
-        out.textContent = '❌ ' + e.message;
+        paintProbe(res.index, res.total, 'ok');
+        out.textContent = `✅ связь есть · адрес ${res.index} из ${res.total} · ${ms} мс`;
+    } else {
+        paintProbe(res.total, res.total, 'fail');
+        out.textContent = navigator.onLine
+            ? `❌ ни один из ${res.total} адресов не ответил. Проверьте интернет или обратитесь к администратору`
+            : '❌ нет подключения к интернету';
+    }
+    return res;
+}
+
+/* Отражает состояние связи при открытии экрана, не дёргая сеть */
+function resetProbeIndicator() {
+    const total = api.API_CANDIDATES.length;
+    if (api.isServerConfirmed()) {
+        paintProbe(api.API_CANDIDATES.indexOf(api.getApiBase()) + 1, total, 'ok');
+        el['lead-api-status'].textContent = 'связь подтверждена';
+    } else {
+        paintProbe(0, total, null);
+        el['lead-api-status'].textContent = '';
     }
 }
 
@@ -266,6 +295,18 @@ export async function createSession() {
     const restore = () => { btn.disabled = false; btn.textContent = 'Создать'; };
 
     try {
+        /* Перед созданием убеждаемся, что есть рабочий адрес: иначе
+           ведущий соберёт наряды и упрётся в молчание сети. */
+        btn.textContent = 'Поиск сервера…';
+        const probe = await api.ensureServer((i, n, state) => paintProbe(i, n, state));
+        if (!probe.ok) {
+            el['lead-api-status'].textContent =
+                `❌ ни один из ${probe.total} адресов не ответил — проверка не создана`;
+            showToast('Нет связи с сервером. Проверьте интернет и повторите', 5000);
+            return;
+        }
+        paintProbe(probe.index, probe.total, 'ok');
+
         btn.textContent = 'Создание…';
         const res = await api.createSession(key, {
             store, network, leadName: name, mode: draft.mode,
@@ -279,6 +320,9 @@ export async function createSession() {
         localStorage.setItem(LS_LAST_STORE, store);
         localStorage.setItem(LS_CHECKER, name);
         el['lead-key-row'].classList.add('hidden');
+        /* Сервер сообщает метку принятого ключа — по ней ведущий видит,
+           под какой учётной записью работает */
+        if (res.leadLabel) showToast(`Ключ принят: ${res.leadLabel}`, 2500);
 
         /* Пулы уходят по одному куску за запрос: у D1 предел 2 МБ
            на значение, а наряд одного проверяющего может быть большим. */
