@@ -24,7 +24,7 @@ import {
 
 import { REASONS, reasonLabel, reasonNeedsScan, NO_ARTICLE } from './reasons.js';
 import { loadForNetwork, findByBarcode, normalizeBarcode, catalogSize } from './catalog.js';
-import { scanBarcode, cancelScan, toggleTorch, isScannerOpen } from './scanner.js';
+import { scanBarcode, SCAN_TYPE_QR, cancelScan, toggleTorch, isScannerOpen } from './scanner.js';
 
 import {
     el, cacheDom, showScreen, getScreen, defaultBadgeFor, setStatusBadge,
@@ -928,7 +928,7 @@ const ACTIONS = {
     'join-start': () => lead.startJoined(),
     'join-back' : () => lead.showRoleScreen(resumeLabel()),
     'join-scan' : async () => {
-        const code = await scanBarcode();
+        const code = await scanBarcode(SCAN_TYPE_QR);
         if (code) lead.applyScannedJoin(code);
     }
 };

@@ -15,7 +15,23 @@
 
 import { el, showToast } from './ui.js';
 
-const FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'];
+/* Типы сканирования: 1D-штрихкоды товара и 2D QR-код проверки.
+   Раньше список форматов был один на оба сценария и содержал только
+   1D-форматы — из-за этого сканер, открытый на экране присоединения,
+   физически не мог распознать QR: ни нативный BarcodeDetector, ни ZXing
+   не искали такой паттерн на кадре. */
+export const SCAN_TYPE_BARCODE = 'barcode';
+export const SCAN_TYPE_QR      = 'qr';
+
+const BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'];
+const QR_FORMATS      = ['qr_code'];
+
+const HINT_TEXT = {
+    [SCAN_TYPE_BARCODE]: 'Наведите камеру на штрихкод',
+    [SCAN_TYPE_QR]:      'Наведите камеру на QR-код'
+};
+
+function formatsFor(type) { return type === SCAN_TYPE_QR ? QR_FORMATS : BARCODE_FORMATS; }
 
 let stream   = null;
 let detector = null;      // нативный BarcodeDetector
@@ -23,6 +39,7 @@ let zxing    = null;      // экземпляр ZXing-ридера
 let rafId    = null;
 let resolveScan = null;   // разрешает промис текущего сеанса
 let torchOn  = false;
+let scanType = SCAN_TYPE_BARCODE;   // что ищем в текущем сеансе
 
 /* ── Ленивая загрузка ZXing ──────────────────────────────────────────── */
 let zxingLoading = null;
@@ -44,8 +61,9 @@ export const hasNativeDetector = () => 'BarcodeDetector' in window;
 /* ── Публичный вход ────────────────────────────────────────────────────
    Открывает слой сканирования и разрешается штрихкодом либо null,
    если пользователь закрыл окно. */
-export function scanBarcode() {
+export function scanBarcode(type = SCAN_TYPE_BARCODE) {
     return new Promise(async resolve => {
+        scanType = type === SCAN_TYPE_QR ? SCAN_TYPE_QR : SCAN_TYPE_BARCODE;
         resolveScan = resolve;
         openOverlay();
 
@@ -85,7 +103,7 @@ async function startCamera() {
     video.setAttribute('playsinline', '');            // без него iOS уходит в полноэкранный плеер
     await video.play();
 
-    el['scanner-hint'].textContent = 'Наведите камеру на штрихкод';
+    el['scanner-hint'].textContent = HINT_TEXT[scanType];
     updateTorchButton();
 }
 
@@ -127,9 +145,11 @@ export async function toggleTorch() {
 
 /* ── Декодирование: нативный путь ──────────────────────────────────── */
 async function runNative() {
-    const supported = await window.BarcodeDetector.getSupportedFormats().catch(() => FORMATS);
+    const wanted = formatsFor(scanType);
+    const supported = await window.BarcodeDetector.getSupportedFormats().catch(() => wanted);
+    const formats = wanted.filter(f => supported.includes(f));
     detector = new window.BarcodeDetector({
-        formats: FORMATS.filter(f => supported.includes(f))
+        formats: formats.length ? formats : wanted
     });
 
     const video = el['scanner-video'];
@@ -148,16 +168,19 @@ async function runNative() {
 async function runZxing() {
     el['scanner-hint'].textContent = 'Подготовка сканера…';
     const ZX = await loadZxing();
-    el['scanner-hint'].textContent = 'Наведите камеру на штрихкод';
+    el['scanner-hint'].textContent = HINT_TEXT[scanType];
 
     const hints = new Map();
     if (ZX.DecodeHintType && ZX.BarcodeFormat) {
-        hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [
-            ZX.BarcodeFormat.EAN_13, ZX.BarcodeFormat.EAN_8,
-            ZX.BarcodeFormat.UPC_A,  ZX.BarcodeFormat.UPC_E,
-            ZX.BarcodeFormat.CODE_128, ZX.BarcodeFormat.CODE_39,
-            ZX.BarcodeFormat.ITF
-        ]);
+        const possibleFormats = scanType === SCAN_TYPE_QR
+            ? [ZX.BarcodeFormat.QR_CODE]
+            : [
+                ZX.BarcodeFormat.EAN_13, ZX.BarcodeFormat.EAN_8,
+                ZX.BarcodeFormat.UPC_A,  ZX.BarcodeFormat.UPC_E,
+                ZX.BarcodeFormat.CODE_128, ZX.BarcodeFormat.CODE_39,
+                ZX.BarcodeFormat.ITF
+            ];
+        hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, possibleFormats);
         hints.set(ZX.DecodeHintType.TRY_HARDER, true);
     }
 
