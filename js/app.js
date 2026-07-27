@@ -708,7 +708,10 @@ function setFoundByBarcode(rawBarcode) {
     const hit = findByBarcode(barcode);
     // повторное сканирование заменяет ранее найденный товар
     disc.found = {
-        barcode,
+        // нашли — записываем ШК так, как он лежит в базе: отчёт должен
+        // сходиться с выгрузкой. Не нашли — то, что прочитал сканер:
+        // только по нему и можно понять, что за код не опознан.
+        barcode: hit ? hit.barcode : barcode,
         tovar: hit ? hit.tovar : '',
         name : hit ? hit.name  : '',
         kol  : 1                       // от минимума диапазона, поднимает пользователь
