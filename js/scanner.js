@@ -33,13 +33,16 @@ const HINT_TEXT = {
 
 function formatsFor(type) { return type === SCAN_TYPE_QR ? QR_FORMATS : BARCODE_FORMATS; }
 
+const SCAN_INTERVAL_MS = 120;       // пауза между попытками ZXing
+
 let stream   = null;
 let detector = null;      // нативный BarcodeDetector
-let zxing    = null;      // экземпляр ZXing-ридера
 let rafId    = null;
+let timerId  = null;      // следующая попытка ZXing
 let resolveScan = null;   // разрешает промис текущего сеанса
 let torchOn  = false;
 let scanType = SCAN_TYPE_BARCODE;   // что ищем в текущем сеансе
+let roiCanvas = null, roiCtx = null;
 
 /* ── Ленивая загрузка ZXing ──────────────────────────────────────────── */
 let zxingLoading = null;
@@ -108,8 +111,8 @@ async function startCamera() {
 }
 
 function stopCamera() {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    if (zxing) { try { zxing.reset(); } catch (e) {} zxing = null; }
+    if (rafId)   { cancelAnimationFrame(rafId); rafId = null; }
+    if (timerId) { clearTimeout(timerId); timerId = null; }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     const video = el['scanner-video'];
     if (video) { video.pause(); video.srcObject = null; }
@@ -143,6 +146,71 @@ export async function toggleTorch() {
     }
 }
 
+/* ── Область распознавания ─────────────────────────────────────────────
+   Декодеру отдаётся не весь кадр, а только рамка в центре экрана.
+   Иначе код ловится «на подлёте»: пока товар несут к рамке, в объектив
+   успевает попасть соседняя вешалка или второй ярлык того же товара —
+   и сеанс закрывается чужим штрихкодом раньше, чем пользователь успел
+   прицелиться. Обрезка заодно и ускоряет разбор: пикселей меньше.
+
+   Рамка живёт в CSS-пикселях поверх видео, растянутого object-fit:
+   cover, поэтому её координаты пересчитываются в пиксели самого потока.
+   Cover масштабирует картинку по большей стороне и центрирует, лишнее
+   уходит за края элемента — отсюда scale и отрицательные отступы. */
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function frameRoi() {
+    const video = el['scanner-video'];
+    const frame = el['scanner-frame'];
+    if (!video || !frame) return null;
+
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh || video.readyState < 2) return null;   // кадра ещё нет
+
+    const vr = video.getBoundingClientRect();
+    const fr = frame.getBoundingClientRect();
+    if (!vr.width || !vr.height) return null;
+
+    const scale = Math.max(vr.width / vw, vr.height / vh);
+    const offX  = (vr.width  - vw * scale) / 2;
+    const offY  = (vr.height - vh * scale) / 2;
+
+    /* Строго целые пиксели. Дробный исходный прямоугольник заставляет
+       браузер пересэмплировать вырезку, и тонкие штрихи расплываются:
+       EAN-13 с модулем шириной в пару пикселей после такой обрезки не
+       читается вообще, хотя на глаз кадр остаётся чистым. Копируем
+       один в один, без масштабирования. */
+    const sx = Math.floor(clamp((fr.left - vr.left - offX) / scale, 0, vw));
+    const sy = Math.floor(clamp((fr.top  - vr.top  - offY) / scale, 0, vh));
+    const sw = Math.min(Math.round(fr.width  / scale), vw - sx);
+    const sh = Math.min(Math.round(fr.height / scale), vh - sy);
+    if (sw < 16 || sh < 16) return null;
+
+    if (!roiCanvas) {
+        roiCanvas = document.createElement('canvas');
+        roiCtx    = roiCanvas.getContext('2d', { willReadFrequently: true });
+    }
+
+    /* Вырезка обкладывается белым полем. Штрихкоду по стандарту нужна
+       свободная светлая полоса по краям, а код, поднесённый к рамке
+       вплотную, занимает её почти целиком — обрезанный «в край» EAN-13
+       переставал читаться вовсе. Поле рисуем сами, а не забираем
+       пикселями из кадра: за рамкой может стоять соседний ярлык, и
+       тогда вся затея теряет смысл. Обрезанный рамкой код от этого
+       читаемым не станет — не сойдутся направляющие и контрольная
+       цифра. */
+    const pad = Math.round(sw * 0.1);
+    const cw = sw + pad * 2, ch = sh + pad * 2;
+    if (roiCanvas.width !== cw || roiCanvas.height !== ch) {
+        roiCanvas.width  = cw;
+        roiCanvas.height = ch;
+    }
+    roiCtx.fillStyle = '#fff';
+    roiCtx.fillRect(0, 0, cw, ch);
+    roiCtx.drawImage(video, sx, sy, sw, sh, pad, pad, sw, sh);
+    return roiCanvas;
+}
+
 /* ── Декодирование: нативный путь ──────────────────────────────────── */
 async function runNative() {
     const wanted = formatsFor(scanType);
@@ -152,13 +220,15 @@ async function runNative() {
         formats: formats.length ? formats : wanted
     });
 
-    const video = el['scanner-video'];
     const tick = async () => {
         if (!stream) return;
-        try {
-            const codes = await detector.detect(video);
-            if (codes && codes.length && codes[0].rawValue) return succeed(codes[0].rawValue);
-        } catch (e) { /* кадр не распознан — просто ждём следующий */ }
+        const roi = frameRoi();
+        if (roi) {
+            try {
+                const codes = await detector.detect(roi);
+                if (codes && codes.length && codes[0].rawValue) return succeed(codes[0].rawValue);
+            } catch (e) { /* кадр не распознан — просто ждём следующий */ }
+        }
         rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -184,10 +254,29 @@ async function runZxing() {
         hints.set(ZX.DecodeHintType.TRY_HARDER, true);
     }
 
-    zxing = new ZX.BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120 });
-    zxing.decodeFromStream(stream, el['scanner-video'], (result, err) => {
-        if (result) succeed(result.getText());
-    });
+    /* Ридер низкого уровня вместо decodeFromStream: тот сам забирает
+       кадр целиком и обрезать его не даёт, а нам нужна только рамка. */
+    const reader = new ZX.MultiFormatReader();
+    reader.setHints(hints);
+
+    const attempt = () => {
+        if (!stream) return;                          // сканер закрыли
+        const roi = frameRoi();
+        let text = null;
+        if (roi) {
+            try {
+                const source = new ZX.HTMLCanvasElementLuminanceSource(roi);
+                const bitmap = new ZX.BinaryBitmap(new ZX.HybridBinarizer(source));
+                text = reader.decode(bitmap).getText();
+            } catch (e) {
+                /* NotFoundException на кадре без кода — штатная ситуация */
+            }
+            reader.reset();
+        }
+        if (text) return succeed(text);
+        timerId = setTimeout(attempt, SCAN_INTERVAL_MS);
+    };
+    attempt();
 }
 
 /* ── Завершение ────────────────────────────────────────────────────── */
@@ -209,6 +298,13 @@ function finish(value) {
 /* ── Слой ──────────────────────────────────────────────────────────── */
 function openOverlay() {
     const o = el['scannerOverlay'];
+    /* Режим объявляется разметке: у QR рамка квадратная под сам код, и
+       нет кнопки ручного ввода — под QR не напечатано цифр, набирать
+       нечего. Для ключа проверки ручной путь остался на экране
+       присоединения: № магазина и код. */
+    o.dataset.scan = scanType;
+    o.setAttribute('aria-label', scanType === SCAN_TYPE_QR
+        ? 'Сканирование QR-кода' : 'Сканирование штрихкода');
     o.classList.remove('hidden');
     o.classList.add('flex');
     el['scanner-error'].classList.add('hidden');
@@ -226,9 +322,13 @@ export const isScannerOpen = () => el['scannerOverlay'] && !el['scannerOverlay']
 function showCameraError(e) {
     const box = el['scanner-error'];
     const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+    // запасной путь разный: у ШК он тут же в слое, у QR — поля на экране
+    const fallback = scanType === SCAN_TYPE_QR
+        ? 'Введите № магазина и код проверки вручную.'
+        : 'Введите штрихкод вручную.';
     box.textContent = denied
-        ? 'Доступ к камере запрещён. Разрешите его в настройках браузера или введите штрихкод вручную.'
-        : 'Камера недоступна на этом устройстве. Введите штрихкод вручную.';
+        ? 'Доступ к камере запрещён. Разрешите его в настройках браузера. ' + fallback
+        : 'Камера недоступна на этом устройстве. ' + fallback;
     box.classList.remove('hidden');
     el['scanner-hint'].textContent = '';
 }

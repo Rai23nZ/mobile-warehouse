@@ -52,7 +52,7 @@ const CACHED_IDS = [
     'disc-left-btn', 'disc-save-btn',
 
     // слой сканирования
-    'scannerOverlay', 'scanner-video', 'scanner-hint', 'scanner-error', 'scanner-torch'
+    'scannerOverlay', 'scanner-video', 'scanner-frame', 'scanner-hint', 'scanner-error', 'scanner-torch'
 ];
 
 export function cacheDom() {

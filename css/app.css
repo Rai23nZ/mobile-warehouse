@@ -640,7 +640,9 @@ html, body { overscroll-behavior-y: none; }
     background: #000;
 }
 
-/* Рамка-прицел: подсказывает, куда наводить */
+/* Рамка-прицел. Не только подсказка, куда наводить: ровно эта область
+   и уходит в декодер (frameRoi в scanner.js), всё вне её не читается.
+   Размеры рамки — часть поведения сканера, а не оформление. */
 .scanner-frame {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
@@ -650,6 +652,15 @@ html, body { overscroll-behavior-y: none; }
     box-shadow: 0 0 0 100vmax rgb(15 23 42 / .55);
     pointer-events: none;
 }
+/* QR квадратный — под него и рамка. Сторона задаётся дважды, а не через
+   aspect-ratio: тот появился только в Safari 15, а на более раннем iOS
+   height: auto схлопнул бы рамку в ноль — вместе с областью поиска. */
+#scannerOverlay[data-scan="qr"] .scanner-frame {
+    width:  min(72vw, 300px);
+    height: min(72vw, 300px);
+}
+/* Под QR не напечатан цифровой код — вводить руками нечего */
+#scannerOverlay[data-scan="qr"] [data-action="scan-manual"] { display: none; }
 /* Бегущая линия — видно, что сканер работает */
 .scanner-frame span {
     position: absolute; left: 8px; right: 8px; top: 0; height: 2px;
