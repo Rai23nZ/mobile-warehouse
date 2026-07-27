@@ -74,9 +74,12 @@ ufw status
 Служба не должна работать от root.
 
 ```bash
-adduser --system --group --home /opt/warehouse-sync warehouse
-mkdir -p /opt/warehouse-sync/data
+adduser --system --group --no-create-home --home /opt/warehouse-sync warehouse
 ```
+
+> `--no-create-home` важен: без него adduser положит в каталог служебные
+> файлы, и `git clone` на шаге 6 откажется работать — ему нужен пустой
+> каталог. Каталог создаст сам git.
 
 ---
 
@@ -97,8 +100,23 @@ Bun выбран потому, что SQLite и серверный HTTP в нё�
 ## Шаг 6. Положить код
 
 ```bash
+git clone https://github.com/Rai23nZ/mobile-warehouse.git /opt/warehouse-sync
+mkdir -p /opt/warehouse-sync/data
+chown -R warehouse:warehouse /opt/warehouse-sync
+```
+
+**Если каталог оказался непустым** и git отказался («destination path
+already exists and is not an empty directory») — то же самое без
+требования пустоты:
+
+```bash
 cd /opt/warehouse-sync
-git clone https://github.com/Rai23nZ/mobile-warehouse.git .
+git init -b main
+git remote add origin https://github.com/Rai23nZ/mobile-warehouse.git
+git fetch origin main
+git reset --hard origin/main
+git branch --set-upstream-to=origin/main main
+mkdir -p data
 chown -R warehouse:warehouse /opt/warehouse-sync
 ```
 

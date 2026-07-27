@@ -147,15 +147,20 @@ function paintSyncBadge(s) {
     if (!inSession()) { b.classList.add('hidden'); return; }
     b.classList.remove('hidden');
 
+    /* Надписи держим короткими и близкими по длине: бейдж имеет
+       фиксированную ширину, и слишком длинный текст её бы растянул,
+       вернув прежнее дёрганье соседних элементов. Подробности ошибки
+       уходят во всплывающую подсказку, а не в саму надпись. */
     let text, cls;
     if (!s.online)       { text = 'нет сети';            cls = 'bg-amber-500'; }
     else if (s.sending)  { text = 'отправка…';           cls = 'bg-indigo-400'; }
     else if (s.pending)  { text = 'ждёт ' + s.pending;   cls = 'bg-amber-500'; }
-    else if (s.error)    { text = 'сбой отправки';       cls = 'bg-rose-600'; }
+    else if (s.error)    { text = 'сбой';                cls = 'bg-rose-600'; }
     else                 { text = 'отправлено';          cls = 'bg-emerald-600'; }
 
     b.textContent = text;
-    b.className = 'text-[10px] px-1.5 py-1 rounded-full font-medium whitespace-nowrap ' + cls;
+    /* sync-badge обязателен: в нём живёт фиксированная ширина */
+    b.className = 'sync-badge text-[10px] px-1.5 py-1 rounded-full font-medium whitespace-nowrap ' + cls;
     b.title = s.error || 'Отправка результатов ведущему';
 }
 

@@ -54,18 +54,23 @@
             </h1>
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
-            <button type="button" id="btn-save-session" data-action="snapshot"
-                    title="Сохранить прогресс на устройство"
-                    class="hidden items-center gap-1 bg-indigo-500 hover:bg-indigo-400 active:scale-95 transition rounded-lg px-1.5 py-1 text-[10px] sm:text-xs font-semibold">
-                <svg class="icon icon-18" aria-hidden="true"><use href="#i-save"></use></svg>
-                <span class="hidden sm:inline">Снимок</span>
-            </button>
+            <!-- Порядок важен. Кнопка сохранения стоит ПОСЛЕДНЕЙ и потому
+                 прижата к краю экрана: раньше она была левее бейджей и
+                 дёргалась влево-вправо каждый раз, когда менялась длина
+                 надписи «ждёт 3» / «отправлено» / «нет сети».
+                 Ширина самого бейджа тоже зафиксирована — см. .sync-badge -->
             <span id="sync-badge" role="status" aria-live="polite" title="Отправка результатов ведущему"
-                  class="hidden text-[10px] px-1.5 py-1 rounded-full font-medium whitespace-nowrap"></span>
+                  class="sync-badge hidden text-[10px] px-1.5 py-1 rounded-full font-medium whitespace-nowrap"></span>
             <span id="status-badge" role="status" aria-live="polite"
                   class="text-[10px] bg-indigo-500 px-1.5 py-1 rounded-full font-medium whitespace-nowrap">
                 Ожидание
             </span>
+            <button type="button" id="btn-save-session" data-action="snapshot"
+                    title="Сохранить прогресс на устройство"
+                    class="hidden items-center gap-1 bg-indigo-500 hover:bg-indigo-400 active:scale-95 transition rounded-lg px-1.5 py-1 text-[10px] sm:text-xs font-semibold flex-shrink-0">
+                <svg class="icon icon-18" aria-hidden="true"><use href="#i-save"></use></svg>
+                <span class="hidden sm:inline">Снимок</span>
+            </button>
         </div>
     </div>
 </header>
