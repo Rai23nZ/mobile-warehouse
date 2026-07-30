@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Аварийная выгрузка отчёта — mobile-warehouse</title>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     rescue.html — достаёт отчёт по проверке, когда основное приложение до
+     неё не дотягивается: сводка ведущего потеряна, устройство сменилось,
+     токен есть только в базе.
+
+     Три правила, которым подчинён этот файл:
+
+     1. Ничего не ломает. Только GET-запросы. Ни /close, ни DELETE здесь
+        нет и быть не должно: инструмент вызывают тогда, когда данные уже
+        под угрозой, и он не имеет права стать второй причиной потери.
+
+     2. Ни от чего не зависит. Ни одного импорта, ни одного внешнего
+        файла — открывается двойным щелчком с флешки, работает с file://
+        (серверы отдают Access-Control-Allow-Origin: *). Поэтому формат
+        отчёта здесь повторён, а не импортирован из js/csv.js: инструмент
+        восстановления не должен падать вместе с приложением.
+
+     3. Отдаёт хоть что-нибудь. Если состав нарядов (пулы) не читается,
+        сырые результаты всё равно выгружаются: неполный отчёт лучше, чем
+        сообщение об ошибке.
+     ═══════════════════════════════════════════════════════════════════ -->
+<style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; padding: 24px 16px 64px;
+        font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #f1f5f9; color: #0f172a;
+    }
+    main { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #64748b; font-size: 12px; margin: 0 0 20px; }
+    .card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
+        padding: 20px; margin-bottom: 16px;
+    }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+               color: #64748b; margin: 0 0 14px; }
+    label { display: block; font-size: 12px; font-weight: 600; margin: 12px 0 4px; }
+    label:first-of-type { margin-top: 0; }
+    input, select {
+        width: 100%; padding: 10px 12px; font: inherit;
+        background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px;
+    }
+    input:focus, select:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
+    .hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+    .row { display: flex; gap: 12px; }
+    .row > * { flex: 1; min-width: 0; }
+    button {
+        font: inherit; font-weight: 700; padding: 12px 16px; border: 0;
+        border-radius: 10px; cursor: pointer; width: 100%; margin-top: 16px;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    .primary { background: #4f46e5; color: #fff; }
+    .ghost { background: #e2e8f0; color: #334155; }
+    #log {
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 12px; white-space: pre-wrap; word-break: break-word;
+        background: #0f172a; color: #cbd5e1; border-radius: 12px;
+        padding: 14px; max-height: 320px; overflow: auto; margin-top: 16px;
+    }
+    #log:empty { display: none; }
+    .ok { color: #34d399; } .err { color: #fb7185; } .warn { color: #fbbf24; }
+    .note {
+        font-size: 12px; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px;
+        background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
+    }
+    .note.danger { background: #fff1f2; border-color: #fecdd3; color: #9f1239; }
+    code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px;
+           font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+    pre.sql {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: 12px; overflow-x: auto; font-size: 12px; margin: 8px 0 0;
+        font-family: ui-monospace, Consolas, monospace;
+    }
+</style>
+</head>
+<body>
+<main>
+    <h1>Аварийная выгрузка отчёта</h1>
+    <p class="sub">Собирает те же два CSV, что и кнопка «Завершить и скачать отчёт», но в обход приложения.</p>
+
+    <div class="note">
+        Инструмент <b>только читает</b>. Проверка не закрывается, данные с сервера не удаляются —
+        после выгрузки их можно забрать ещё раз или доработать смену обычным способом.
+        <br><br>
+        Файл открывается прямо с диска. Если браузер запретит запросы со страницы,
+        открытой как <code>file://</code>, положите его рядом с приложением и откройте
+        по адресу <code>/tools/rescue.html</code>.
+    </div>
+
+    <div class="card">
+        <h2>Куда идти</h2>
+
+        <label for="api">Сервер</label>
+        <select id="api">
+            <option value="https://ru.warehouse-sync.ru">1 — ru.warehouse-sync.ru (своя машина, Москва)</option>
+            <option value="https://warehouse-sync.ru">2 — warehouse-sync.ru (Cloudflare)</option>
+            <option value="https://sync.warehouse-sync.ru">3 — sync.warehouse-sync.ru (Cloudflare)</option>
+            <option value="https://second.reserveroute.online">4 — second.reserveroute.online (Cloudflare)</option>
+            <option value="https://warehouse-sync.cloudflare-uncommon.workers.dev">5 — workers.dev (Cloudflare)</option>
+            <option value="custom">— указать вручную —</option>
+        </select>
+        <input id="api-custom" type="url" placeholder="https://…" style="display:none;margin-top:8px">
+        <p class="hint">
+            Базы у этих адресов <b>разные</b>. Проверка, созданная на одном, на другом не существует.
+            Какой адрес был у ведущего — видно в консоли браузера на его устройстве:
+            <code>localStorage.getItem('wh_api_base')</code>. Если неизвестен — переберите по очереди.
+        </p>
+
+        <div class="row" style="margin-top:16px">
+            <div>
+                <label for="store">Номер магазина</label>
+                <input id="store" inputmode="numeric" autocomplete="off" placeholder="напр. 1234">
+            </div>
+            <div>
+                <label for="code">Код проверки</label>
+                <input id="code" maxlength="6" autocomplete="off" placeholder="6 знаков"
+                       style="text-transform:uppercase;font-family:ui-monospace,Consolas,monospace">
+            </div>
+        </div>
+        <p class="hint">
+            Код забыт? На телефоне любого проверяющего он лежит в <code>localStorage</code>:
+            ключ <code>wh_sync_queue_&lt;КОД&gt;_&lt;номер&gt;</code> либо
+            <code>JSON.parse(localStorage.wh_session_v4).session.code</code>.
+            Без отладчика: в наряде нажать «Завершить» — код напечатан в окне подтверждения, затем «Отмена».
+        </p>
+
+        <label for="token" style="margin-top:16px">Токен ведущего</label>
+        <input id="token" autocomplete="off" placeholder="32 знака из таблицы sessions"
+               style="font-family:ui-monospace,Consolas,monospace">
+        <p class="hint">Достаётся из базы одним запросом — см. ниже. Оставьте пустым, если вместо него используете ключ ведущего.</p>
+
+        <label for="leadkey">…либо ключ ведущего (LEAD_KEY)</label>
+        <input id="leadkey" type="password" autocomplete="off" placeholder="сработает после обновления сервера">
+        <p class="hint">
+            Обменивается на токен через <code>POST /session/&lt;код&gt;/reclaim</code>.
+            Работает только если на сервере развёрнута версия worker.js с этой точкой доступа.
+        </p>
+
+        <button id="go" class="primary" type="button">Собрать и скачать отчёт</button>
+        <button id="raw" class="ghost" type="button">Только сырые результаты (JSON)</button>
+
+        <div id="log"></div>
+    </div>
+
+    <div class="card">
+        <h2>Как достать токен из базы</h2>
+        <p style="margin:0;font-size:13px">Московская машина — по SSH, в каталоге службы:</p>
+        <pre class="sql">sqlite3 warehouse.db "SELECT code, store, lead_name, created_at, lead_token FROM sessions ORDER BY created_at DESC;"</pre>
+        <p style="margin:14px 0 0;font-size:13px">Cloudflare — панель, <b>D1 SQLite Database → warehouse → Console</b>:</p>
+        <pre class="sql">SELECT code, store, lead_name, created_at, lead_token FROM sessions ORDER BY created_at DESC;</pre>
+        <div class="note danger" style="margin:16px 0 0">
+            Данные брошенной проверки живут ограниченное время: подчистка сносит смены
+            старше 36 часов. Выгружайте до истечения срока.
+        </div>
+    </div>
+</main>
+
+<script>
+'use strict';
+
+/* ── Справочники: копия js/reasons.js и js/csv.js ──────────────────────
+   Намеренная копия, а не импорт: см. правило 2 в шапке файла. При правке
+   формулировок в приложении их нужно перенести и сюда. */
+const REASON_LABEL = {
+    bc_factory: 'Неправильный ШК (заводской)',
+    label_knt : 'Неверная оклейка ШК (КНТ)',
+    label_pp  : 'Неверная оклейка ШК (ПП)',
+    empty_pack: 'Пустая упаковка',
+    part_set  : 'Часть комплекта',
+    dup_skip  : 'Задвоение/Пропуск',
+    ntp       : 'НТП',
+    not_found : 'Не установлена'
+};
+const ZONE_STATUS_LABEL = { not_confirmed: 'РАСХОЖДЕНИЕ', waiting: 'НЕ ПРОВЕРЕНО' };
+const NO_ARTICLE = 'ШК нет';
+const BOM = '﻿';
+
+const reasonLabel = id => REASON_LABEL[id] || '';
+const csvEscape = v => {
+    const s = String(v ?? '');
+    return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+const csvRow = cells => cells.map(csvEscape).join(';');
+
+const REPORT_HEAD = [
+    'Проверяющий', 'Товар', 'Наименование', 'ТМ', 'Направление', 'Пол',
+    'Участок', 'Кол-во план', 'Статус', 'Причина',
+    'Факт: ШК', 'Факт: артикул', 'Факт: наименование', 'Факт: кол-во',
+    'Комментарий', 'Время отметки'
+];
+const COVERAGE_HEAD = [
+    'Проверяющий', 'Участков в наряде', 'Подтверждено', 'Расхождений',
+    'Не проверено', 'Начало', 'Окончание', 'Состояние'
+];
+
+/* ── Журнал ────────────────────────────────────────────────────────── */
+const logBox = document.getElementById('log');
+function log(msg, cls) {
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+}
+const clearLog = () => { logBox.textContent = ''; };
+
+/* ── Ввод ──────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+
+$('api').addEventListener('change', () => {
+    $('api-custom').style.display = $('api').value === 'custom' ? 'block' : 'none';
+});
+
+function readForm() {
+    const base = ($('api').value === 'custom' ? $('api-custom').value : $('api').value)
+        .trim().replace(/\/+$/, '');
+    return {
+        base,
+        store  : $('store').value.trim(),
+        code   : $('code').value.trim().toUpperCase(),
+        token  : $('token').value.trim(),
+        leadKey: $('leadkey').value.trim()
+    };
+}
+
+function validate(f) {
+    if (!f.base)  return 'Не указан адрес сервера';
+    if (!f.store) return 'Не указан номер магазина';
+    if (f.code.length !== 6) return 'Код проверки — ровно 6 знаков';
+    if (!f.token && !f.leadKey) return 'Нужен токен ведущего либо ключ ведущего';
+    return null;
+}
+
+/* ── Сеть ──────────────────────────────────────────────────────────────
+   Без переключения между адресами: инструмент обязан ходить ровно туда,
+   куда его послали. Молчаливый уход на соседний сервер с другой базой —
+   ровно та ошибка, из-за которой этот файл и понадобился. */
+async function call(f, path, { method = 'GET', headers = {}, raw = false } = {}) {
+    const res = await fetch(f.base + path, { method, headers });
+    const text = await res.text();
+    if (!res.ok) {
+        let msg = text;
+        try { msg = JSON.parse(text).error || text; } catch (e) {}
+        throw new Error(`${res.status} — ${msg}`);
+    }
+    if (raw) return text;
+    try { return JSON.parse(text); } catch (e) { return text; }
+}
+
+/* Токен либо введён руками, либо выменивается на ключ ведущего */
+async function resolveToken(f) {
+    if (f.token) return f.token;
+    log('Обмен ключа ведущего на токен…');
+    const res = await call(f, `/session/${f.code}/reclaim?store=${encodeURIComponent(f.store)}`,
+        { method: 'POST', headers: { 'X-Lead-Key': f.leadKey } });
+    if (!res || !res.leadToken) throw new Error('Сервер не вернул токен');
+    log('Токен получен: ' + res.leadToken, 'ok');
+    $('token').value = res.leadToken;
+    return res.leadToken;
+}
+
+async function fetchAllResults(f, token) {
+    const rows = [];
+    let offset = 0, total = null;
+    do {
+        const page = await call(f, `/session/${f.code}/results?offset=${offset}&limit=1000`,
+            { headers: { 'X-Lead-Token': token } });
+        total = page.total;
+        rows.push(...page.rows);
+        offset += page.rows.length;
+        log(`Результаты: ${rows.length} из ${total}`);
+        if (!page.rows.length) break;
+    } while (rows.length < total);
+    return rows;
+}
+
+function download(content, mime, filename) {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    log('⬇ ' + filename, 'ok');
+}
+
+function stamp() {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}`;
+}
+
+/* ── Полный отчёт ──────────────────────────────────────────────────── */
+async function buildReport() {
+    clearLog();
+    const f = readForm();
+    const bad = validate(f);
+    if (bad) { log('✖ ' + bad, 'err'); return; }
+
+    const btn = $('go');
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Работаю…';
+
+    try {
+        const token = await resolveToken(f);
+
+        log('Состав нарядов…');
+        const info = await call(f, `/session/${f.code}/info?store=${encodeURIComponent(f.store)}`);
+        log(`Проверка ${info.code}: магазин ${info.store}, ${info.network}, ведущий ${info.leadName}, состояние «${info.status}»`, 'ok');
+
+        /* Охват берём из пулов на сервере — исходного CSV у нас нет.
+           Наряд, чей пул не читается, не должен утянуть за собой весь
+           отчёт: помечаем его и идём дальше. */
+        const scope = [];
+        const brokenPools = [];
+        for (const a of info.assignments) {
+            try {
+                const meta = await call(f, `/session/${f.code}/assignment/${a.idx}?store=${encodeURIComponent(f.store)}`);
+                for (let p = 0; p < meta.parts; p++) {
+                    const text = await call(f, `/session/${f.code}/pool/${a.idx}/${p}?store=${encodeURIComponent(f.store)}`, { raw: true });
+                    JSON.parse(text).forEach(pr => (pr.zones || []).forEach(z => {
+                        scope.push({ checker: a.checker, idx: a.idx, product: pr, zone: z });
+                    }));
+                }
+                log(`Наряд «${a.checker}»: ${meta.parts} кусков пула`);
+            } catch (e) {
+                brokenPools.push(a.checker);
+                log(`⚠ Наряд «${a.checker}»: состав не прочитан (${e.message}) — строки уйдут без плана`, 'warn');
+            }
+        }
+
+        const results = await fetchAllResults(f, token);
+        const byKey = new Map(results.map(r => [r.tovar + ' ' + r.uch, r]));
+
+        const lines = [csvRow(REPORT_HEAD)];
+        const stat = { total: 0, done: 0, issues: 0, pending: 0 };
+        const perChecker = new Map();
+        const used = new Set();
+
+        for (const s of scope) {
+            const key = s.product.tovar + ' ' + s.zone.uch;
+            const r = byKey.get(key);
+            if (r) used.add(key);
+            const status = r ? r.status : 'waiting';
+
+            stat.total++;
+            if (status === 'not_confirmed') stat.issues++;
+            else if (status === 'waiting')  stat.pending++;
+            else stat.done++;
+
+            const c = perChecker.get(s.checker) || { done: 0, issues: 0, pending: 0, total: 0 };
+            c.total++;
+            if (status === 'not_confirmed') c.issues++;
+            else if (status === 'waiting')  c.pending++;
+            else c.done++;
+            perChecker.set(s.checker, c);
+
+            if (status === 'confirmed') continue;      // подтверждённое в отчёт не идёт
+            const fo = r && r.found;
+            lines.push(csvRow([
+                s.checker, s.product.tovar, s.product.name, s.product.tm,
+                s.product.napr, s.product.pol, s.zone.uch, s.zone.kol,
+                ZONE_STATUS_LABEL[status] || status,
+                r ? reasonLabel(r.reason) : '',
+                fo ? fo.barcode : '',
+                fo ? (fo.tovar || NO_ARTICLE) : '',
+                fo ? (fo.name || '') : '',
+                fo ? fo.kol : '',
+                r ? (r.comment || '') : '',
+                r && r.at ? new Date(r.at).toLocaleString('ru-RU') : ''
+            ]));
+        }
+
+        /* Отметки, для которых состав наряда не прочитался, всё равно
+           попадают в отчёт — без плановых полей, но с пометкой. Иначе
+           сломанный пул означал бы молча потерянную работу человека. */
+        let orphans = 0;
+        for (const r of results) {
+            const key = r.tovar + ' ' + r.uch;
+            if (used.has(key)) continue;
+            if (r.status === 'confirmed') continue;
+            orphans++;
+            const fo = r.found;
+            lines.push(csvRow([
+                r.checker || '(наряд неизвестен)', r.tovar, '', '', '', '',
+                r.uch, '(состав наряда не прочитан)',
+                ZONE_STATUS_LABEL[r.status] || r.status,
+                reasonLabel(r.reason),
+                fo ? fo.barcode : '',
+                fo ? (fo.tovar || NO_ARTICLE) : '',
+                fo ? (fo.name || '') : '',
+                fo ? fo.kol : '',
+                r.comment || '',
+                r.at ? new Date(r.at).toLocaleString('ru-RU') : ''
+            ]));
+        }
+        if (orphans) log(`⚠ Отметок вне прочитанного состава: ${orphans} — добавлены в конец отчёта`, 'warn');
+
+        const covLines = [csvRow(COVERAGE_HEAD)];
+        info.assignments.forEach(a => {
+            const c = perChecker.get(a.checker) || { total: 0, done: 0, issues: 0, pending: 0 };
+            covLines.push(csvRow([
+                a.checker, c.total, c.done, c.issues, c.pending,
+                a.startedAt  ? new Date(a.startedAt).toLocaleString('ru-RU')  : '',
+                a.finishedAt ? new Date(a.finishedAt).toLocaleString('ru-RU') : '',
+                a.state === 'done' ? 'сдал' : a.state === 'in_progress' ? 'в работе' : 'не начинал'
+            ]));
+        });
+
+        const mark = `${f.store}_${f.code}`;
+        download(BOM + lines.join('\r\n') + '\r\n', 'text/csv;charset=utf-8;', `отчёт_${mark}_${stamp()}.csv`);
+        download(BOM + covLines.join('\r\n') + '\r\n', 'text/csv;charset=utf-8;', `покрытие_${mark}_${stamp()}.csv`);
+
+        log(`Готово. Участков ${stat.total}: подтверждено ${stat.done}, расхождений ${stat.issues}, не проверено ${stat.pending}.`, 'ok');
+        if (brokenPools.length) {
+            log(`Внимание: состав нарядов не прочитан у — ${brokenPools.join(', ')}. Отчёт неполон по плановым колонкам.`, 'warn');
+        }
+        log('Данные на сервере не тронуты: проверка не закрыта, ничего не удалено.', 'ok');
+    } catch (e) {
+        log('✖ ' + e.message, 'err');
+        log('Если сообщение «Проверка не найдена» — почти наверняка выбран не тот адрес сервера: базы у них раздельные. Попробуйте следующий по списку.', 'warn');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+/* ── Сырая выгрузка ────────────────────────────────────────────────────
+   Последний рубеж: если сборка отчёта почему-либо не идёт, забрать
+   строки как есть, а разобрать их можно и потом. */
+async function dumpRaw() {
+    clearLog();
+    const f = readForm();
+    const bad = validate(f);
+    if (bad) { log('✖ ' + bad, 'err'); return; }
+
+    const btn = $('raw');
+    btn.disabled = true;
+    try {
+        const token = await resolveToken(f);
+        const results = await fetchAllResults(f, token);
+        let progress = null, info = null;
+        try { info = await call(f, `/session/${f.code}/info?store=${encodeURIComponent(f.store)}`); } catch (e) {}
+        try { progress = await call(f, `/session/${f.code}/progress`, { headers: { 'X-Lead-Token': token } }); } catch (e) {}
+        download(JSON.stringify({ savedAt: new Date().toISOString(), api: f.base, info, progress, results }, null, 2),
+                 'application/json', `сырые_${f.store}_${f.code}_${stamp()}.json`);
+        log(`Готово: ${results.length} строк результатов.`, 'ok');
+    } catch (e) {
+        log('✖ ' + e.message, 'err');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+$('go').addEventListener('click', buildReport);
+$('raw').addEventListener('click', dumpRaw);
+</script>
+</body>
+</html>

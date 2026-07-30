@@ -116,6 +116,10 @@ async function request(path, opts = {}) {
     } catch (primaryErr) {
         if (primaryErr.status !== 0) throw primaryErr;
         if (API_CANDIDATES.length < 2) throw primaryErr;
+        /* Устройство внутри смены: запасные адреса ей не помогут — там
+           другая база, и этой проверки в ней нет. Перебор дал бы только
+           четыре подряд таймаута перед тем же самым отказом. */
+        if (pinnedApi) throw primaryErr;
 
         for (const candidate of API_CANDIDATES) {
             if (candidate === apiBase) continue;
@@ -148,23 +152,29 @@ export const health = () => request('/health');
    Возвращает { ok, index, total }. Первый ответивший адрес становится
    текущим. */
 export async function probeServers(onStep) {
-    const total = API_CANDIDATES.length;
-    for (let i = 0; i < total; i++) {
-        const base = API_CANDIDATES[i];
-        onStep && onStep(i + 1, total, 'probing');
+    /* Внутри живой смены перебирать нечего. На /health отвечают все
+       адреса, поэтому «нашли рабочий сервер» означало бы тихий переезд в
+       чужую базу — и проверка, целая на своём сервере, переставала
+       находиться. Проверяем только тот адрес, где смена живёт. */
+    const list  = pinnedApi ? [pinnedApi] : API_CANDIDATES;
+    const total = API_CANDIDATES.length;   // номер по-прежнему означает место в общем списке
+
+    for (const base of list) {
+        const num = API_CANDIDATES.indexOf(base) + 1;
+        onStep && onStep(num, total, 'probing');
         try {
             const res = await fetchOnce(base, '/health', {}, PROBE_TIMEOUT);
             if (!res || res.ok !== true) throw new HttpError(0, 'не похоже на наш сервер');
             setApiBase(base);
             serverConfirmed = true;
-            onStep && onStep(i + 1, total, 'ok');
-            return { ok: true, index: i + 1, total, info: res };
+            onStep && onStep(num, total, 'ok');
+            return { ok: true, index: num, total, info: res };
         } catch (e) {
-            onStep && onStep(i + 1, total, 'fail');
+            onStep && onStep(num, total, 'fail');
         }
     }
     serverConfirmed = false;
-    return { ok: false, index: 0, total };
+    return { ok: false, index: 0, total, pinned: !!pinnedApi };
 }
 
 /* Флаг «в этом запуске приложения рабочий адрес уже подтверждён» —
@@ -192,6 +202,61 @@ export async function ensureServer(onStep) {
 export const saveLeadToken = (code, token) => localStorage.setItem(LS_LEAD_TOK + '_' + code, token);
 export const loadLeadToken = (code) => localStorage.getItem(LS_LEAD_TOK + '_' + code) || '';
 export const dropLeadToken = (code) => localStorage.removeItem(LS_LEAD_TOK + '_' + code);
+
+/* ── Реестр проверок, которые ведёт это устройство ─────────────────────
+   Токен без кода бесполезен, а код нигде не хранился: он существовал
+   только в имени ключа `wh_lead_token_<КОД>` и в оперативной памяти
+   вкладки. Стоило странице перезагрузиться — и сводка становилась
+   недостижимой, хотя право на неё лежало тут же, в localStorage.
+
+   Здесь же запоминается АДРЕС сервера. Базы у адресов раздельные, смена
+   с одного на другом не существует, и без этой записи восстановление
+   упиралось бы в «Проверка не найдена» на исправном сервере с целыми
+   данными. */
+const LS_LEAD_BOARDS  = 'wh_lead_boards';
+const MAX_LEAD_BOARDS = 5;
+
+function readLeadBoards() {
+    try {
+        const list = JSON.parse(localStorage.getItem(LS_LEAD_BOARDS) || '[]');
+        return Array.isArray(list) ? list.filter(x => x && x.code) : [];
+    } catch (e) { return []; }
+}
+
+function writeLeadBoards(list) {
+    try { localStorage.setItem(LS_LEAD_BOARDS, JSON.stringify(list.slice(0, MAX_LEAD_BOARDS))); }
+    catch (e) { console.warn('[sync] реестр проверок не сохранён:', e); }
+}
+
+/* rec: { code, store, network, mode, leadName }. Адрес и время проставляем
+   сами — вызывающему их знать незачем. */
+export function rememberLeadSession(rec) {
+    if (!rec || !rec.code) return;
+    const entry = { ...rec, api: apiBase, savedAt: new Date().toISOString() };
+    writeLeadBoards([entry, ...readLeadBoards().filter(x => x.code !== rec.code)]);
+}
+
+export const leadSessions = () => readLeadBoards();
+export const leadSessionByCode = (code) => readLeadBoards().find(x => x.code === code) || null;
+
+export function forgetLeadSession(code) {
+    writeLeadBoards(readLeadBoards().filter(x => x.code !== code));
+}
+
+/* ── Привязка к адресу ─────────────────────────────────────────────────
+   Пока устройство внутри конкретной смены, уходить на другой адрес
+   нельзя: там своя база и свой набор проверок. Перебор остаётся доступен
+   для поиска и создания, но увести живую смену он больше не может. */
+let pinnedApi = null;
+
+export function pinApi(url) {
+    if (!url) return;
+    const next = url.replace(/\/+$/, '');
+    if (next !== apiBase) { setApiBase(next); serverConfirmed = false; }
+    pinnedApi = next;
+}
+export function unpinApi() { pinnedApi = null; }
+export const pinnedApiBase = () => pinnedApi;
 
 /* ── Ведущий ───────────────────────────────────────────────────────── */
 
@@ -225,6 +290,21 @@ export const getProgress = (code, leadToken) =>
 export const closeSession = (code, leadToken) =>
     request(`/session/${code}/close`, { method: 'POST', headers: { 'X-Lead-Token': leadToken } });
 
+/* Восстановление права на свою проверку по ключу ведущего. Нужно, когда
+   токена на устройстве нет: сменился ноутбук, стёрты данные сайта, смена
+   создавалась не отсюда. Возвращает тот же токен и заодно сохраняет его. */
+export async function reclaimSession(code, store, leadKey) {
+    const res = await request(`/session/${code}/reclaim?store=${encodeURIComponent(store)}`, {
+        method: 'POST', headers: { 'X-Lead-Key': leadKey }
+    });
+    if (res && res.leadToken) saveLeadToken(code, res.leadToken);
+    return res;
+}
+
+/* Список проверок магазина — для ведущего, забывшего код */
+export const listSessions = (store, leadKey) =>
+    request(`/sessions?store=${encodeURIComponent(store)}`, { headers: { 'X-Lead-Key': leadKey } });
+
 export const deleteSession = (code, leadToken) =>
     request(`/session/${code}`, { method: 'DELETE', headers: { 'X-Lead-Token': leadToken } });
 
@@ -249,6 +329,44 @@ export async function fetchAllResults(code, leadToken, onProgress) {
 
 export const getInfo = (code, store) =>
     request(`/session/${code}/info?store=${encodeURIComponent(store)}`);
+
+/* Поиск проверки по всем адресам.
+
+   Единственное место, где перебор уместен и обязателен. Смена живёт на
+   одном конкретном сервере, у остальных своя база; обычный request() при
+   404 никуда не переключается — и правильно делает, иначе он терял бы
+   смену на ровном месте. Но когда проверку ищут ПО КОДУ, опросить нужно
+   всех: иначе ведущий, создавший смену на московской машине, и
+   проверяющий, чьё устройство помнит адрес Cloudflare, никогда не
+   встретятся.
+
+   Найденный адрес закрепляется: дальше устройство работает только с ним. */
+export async function findSessionAnywhere(code, store, onStep) {
+    const order = [apiBase, ...API_CANDIDATES.filter(b => b !== apiBase)];
+    const total = API_CANDIDATES.length;
+    let lastErr = null;
+
+    for (const base of order) {
+        const num = API_CANDIDATES.indexOf(base) + 1;
+        onStep && onStep(num, total, 'probing');
+        try {
+            const info = await fetchOnce(
+                base, `/session/${code}/info?store=${encodeURIComponent(store)}`, {}, PROBE_TIMEOUT);
+            onStep && onStep(num, total, 'ok');
+            pinApi(base);
+            serverConfirmed = true;
+            return { info, api: base };
+        } catch (e) {
+            /* 403 — код существует, но не подходит к магазину. Это ответ
+               по существу, а не «не тот сервер»: продолжать перебор
+               бессмысленно, а сообщение полезно показать как есть. */
+            if (e.status === 403) throw e;
+            lastErr = e;
+            onStep && onStep(num, total, 'fail');
+        }
+    }
+    throw lastErr || new HttpError(404, 'Проверка не найдена ни на одном сервере.');
+}
 
 export const getAssignment = (code, store, idx) =>
     request(`/session/${code}/assignment/${idx}?store=${encodeURIComponent(store)}`);
@@ -318,6 +436,7 @@ export function initQueue(context) {
     queue = [];
     retryStep = 0;
     lastError = '';
+    if (ctx && ctx.api) pinApi(ctx.api);
     const key = queueKey();
     if (key) {
         try { queue = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { queue = []; }
@@ -326,11 +445,30 @@ export function initQueue(context) {
     if (queue.length) scheduleFlush(500);
 }
 
+/* Поднять очередь под уже восстановленную сессию, если она ещё не поднята.
+
+   Без этого перезагрузка страницы посреди наряда означала тихую потерю
+   работы: store.session возвращался из localStorage, приложение считало
+   себя внутри проверки, а очередь оставалась без контекста — enqueueZone
+   выходил на первой же строке, отметки никуда не уходили, и при этом
+   индикатор показывал «отправлено», потому что в очереди действительно
+   было пусто. Заодно поднимается всё, что не успело уйти до перезагрузки. */
+export function ensureQueue(context) {
+    if (!context || !context.code) return;
+    if (ctx && ctx.code === context.code && ctx.idx === context.idx) {
+        if (context.api) pinApi(context.api);
+        emit();
+        return;
+    }
+    initQueue(context);
+}
+
 export function resetQueue() {
     const key = queueKey();
     if (key) localStorage.removeItem(key);
     ctx = null; queue = []; retryStep = 0; lastError = '';
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    unpinApi();
     emit();
 }
 

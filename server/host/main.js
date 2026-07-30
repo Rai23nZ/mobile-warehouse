@@ -70,6 +70,15 @@ function logLine(request, status, started) {
     console.log(`${request.method} ${path} → ${status} (${Date.now() - started} мс)`);
 }
 
+/* Подчистка брошенных смен по расписанию. В Cloudflare её запускает Cron
+   Trigger, здесь — обычный таймер: тот же worker.scheduled, логика опять
+   не продублирована. Раз в час достаточно — срок жизни смены 36 часов. */
+const SWEEP_EVERY_MS = 60 * 60 * 1000;
+setInterval(() => {
+    Promise.resolve(worker.scheduled({ scheduledTime: Date.now() }, env, ctx))
+           .catch(e => console.warn('[уборка]', e));
+}, SWEEP_EVERY_MS).unref?.();
+
 console.log(`сервер синхронизации слушает 127.0.0.1:${server.port}`);
 console.log(`база: ${DB_PATH}`);
 console.log(`ключей ведущих задано: ${(env.LEAD_KEYS.split(/[,\n;]+/).filter(s => s.trim()).length) + (env.LEAD_KEY ? 1 : 0)}`);

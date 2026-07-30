@@ -11,11 +11,15 @@ export const el = {};
 
 const CACHED_IDS = [
     'screen-auth', 'screen-role', 'screen-lead', 'screen-board', 'screen-join',
-    'screen-upload', 'screen-filter', 'screen-work', 'footer-work',
+    'screen-reopen', 'screen-upload', 'screen-filter', 'screen-work', 'footer-work',
     'auth-password', 'auth-error', 'sync-badge',
 
     // выбор роли
-    'role-resume', 'role-resume-info', 'app-version',
+    'role-resume', 'role-resume-info', 'role-lead-boards', 'app-version',
+
+    // открытие своей проверки заново
+    'reopen-store', 'reopen-code', 'reopen-key', 'reopen-error',
+    'reopen-open-btn', 'reopen-local', 'reopen-remote', 'reopen-status',
 
     // создание проверки
     'lead-api-status', 'lead-ping-btn', 'lead-probe-count', 'lead-probe-lamp',
@@ -62,13 +66,14 @@ export function cacheDom() {
 /* ── Экраны ────────────────────────────────────────────────────────────
    Раньше переключение было россыпью classList.add/remove в пяти местах,
    и состояние экрана существовало только в DOM. */
-const SCREENS = ['auth', 'role', 'lead', 'board', 'join', 'upload', 'filter', 'work'];
+const SCREENS = ['auth', 'role', 'lead', 'board', 'join', 'reopen', 'upload', 'filter', 'work'];
 const BADGE_BY_SCREEN = {
     work : 'Проверка',
     filter: 'Данные готовы',
     lead : 'Настройка',
     board: 'Ведущий',
-    join : 'Подключение'
+    join : 'Подключение',
+    reopen: 'Восстановление'
 };
 
 let currentScreen = 'auth';

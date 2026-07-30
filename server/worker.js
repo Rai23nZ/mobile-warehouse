@@ -34,7 +34,14 @@ const TOKEN_LEN      = 32;
 const MAX_ASSIGNMENTS = 12;
 const MAX_CHUNK_BYTES = 900 * 1024;    // с запасом от предела D1 в 2 МБ
 const MAX_RESULT_ROWS = 100;           // 100 строк × 9 полей < предела на параметры
-const SESSION_TTL_H   = 36;            // брошенные смены подчищаются
+
+/* Брошенные смены подчищаются. Срок отсчитывается от ПОСЛЕДНЕЙ ОТМЕТКИ, а
+   не от создания: инвентаризация законно бывает длиннее суток, и раньше
+   такую смену стирало из-под работающих проверяющих. Смена без единого
+   результата считается по времени создания — ей нечего беречь. */
+const SESSION_TTL_H   = 36;
+const SWEEP_LIMIT     = 5;             // за один вызов из /session/create
+const SWEEP_LIMIT_CRON = 50;           // по расписанию торопиться некуда
 
 const CORS = {
     'Access-Control-Allow-Origin' : '*',
@@ -405,12 +412,20 @@ async function deleteSession(request, env, code) {
 }
 
 /* Подчистка брошенных смен: если ведущий забыл нажать «завершить»,
-   данные не должны лежать в базе вечно. */
-async function sweepStale(env) {
+   данные не должны лежать в базе вечно.
+
+   Условие по результатам обязательно. Прежний вариант смотрел только на
+   created_at и сносил смену, в которую прямо сейчас идут отметки: смена,
+   пережившая ночь, исчезала под работающими проверяющими. Теперь удаляется
+   лишь то, куда за отведённый срок никто ничего не прислал. */
+async function sweepStale(env, limit = SWEEP_LIMIT) {
     const edge = new Date(Date.now() - SESSION_TTL_H * 3600 * 1000).toISOString();
     const { results: old } = await env.DB.prepare(
-        'SELECT code FROM sessions WHERE created_at < ? LIMIT 5'
-    ).bind(edge).all();
+        `SELECT s.code FROM sessions s
+          WHERE s.created_at < ?
+            AND NOT EXISTS (SELECT 1 FROM results r WHERE r.code = s.code AND r.at > ?)
+          LIMIT ?`
+    ).bind(edge, edge, limit).all();
     for (const s of old) {
         await env.DB.batch([
             env.DB.prepare('DELETE FROM results     WHERE code = ?').bind(s.code),
@@ -419,7 +434,72 @@ async function sweepStale(env) {
             env.DB.prepare('DELETE FROM sessions    WHERE code = ?').bind(s.code)
         ]);
     }
+    if (old.length) console.log(`[sweep] удалено брошенных смен: ${old.length}`);
     return old.length;
+}
+
+/* POST /session/:code/reclaim?store=NNNN — заголовок X-Lead-Key
+
+   Восстановление доступа к своей проверке.
+
+   Зачем это нужно. leadToken выдаётся один раз и живёт в памяти одного
+   браузера. Погас ноутбук ведущего — и результаты всей смены остаются на
+   сервере без владельца: отчёт не собрать, данные не стереть, переиздать
+   токен нечем. Мастер-ключ ведущего человек, в отличие от токена, может
+   ввести заново с любого устройства — на нём и держится восстановление.
+
+   Токен возвращается ТОТ ЖЕ, а не новый. Ротация выбила бы из сводки
+   исправно работающее второе устройство ведущего, а защиты не прибавила
+   бы: предъявивший мастер-ключ и так может всё, что позволяет токен.
+
+   Номер магазина спрашивается не ради секретности — он и так известен
+   смене, — а чтобы перебор шестизначных кодов не приводил случайно в
+   чужую проверку. */
+async function reclaimSession(request, env, code, store) {
+    const lead = matchLeadKey(env, request.headers.get('X-Lead-Key'));
+    if (!lead) return fail(403, 'Неверный ключ ведущего.');
+
+    const guard = await requireSession(env, code, store);
+    if (guard.error) return guard.error;
+    const s = guard.session;
+
+    console.log(`[reclaim] код ${code}, магазин ${s.store}, ключ «${lead.label || 'без метки'}»`);
+    return json({
+        code: s.code, store: s.store, network: s.network, leadName: s.lead_name,
+        mode: s.mode, status: s.status, createdAt: s.created_at,
+        leadToken: s.lead_token, leadLabel: lead.label || ''
+    });
+}
+
+/* GET /sessions?store=NNNN — заголовок X-Lead-Key
+
+   Ведущий, забывший код, должен иметь возможность его найти: без кода
+   восстановление не с чего начинать. Токены отсюда не отдаются — за ними
+   идут в /reclaim отдельным запросом. */
+async function listSessions(request, env, store) {
+    const lead = matchLeadKey(env, request.headers.get('X-Lead-Key'));
+    if (!lead) return fail(403, 'Неверный ключ ведущего.');
+    if (!store) return fail(400, 'Не указан номер магазина.');
+
+    const { results: rows } = await env.DB.prepare(
+        `SELECT s.code, s.network, s.lead_name, s.mode, s.status, s.created_at,
+                COUNT(r.tovar) AS decided, MAX(r.at) AS last_at
+           FROM sessions s
+           LEFT JOIN results r ON r.code = s.code
+          WHERE s.store = ?
+          GROUP BY s.code
+          ORDER BY s.created_at DESC
+          LIMIT 20`
+    ).bind(String(store)).all();
+
+    return json({
+        store: String(store),
+        sessions: rows.map(r => ({
+            code: r.code, network: r.network, leadName: r.lead_name, mode: r.mode,
+            status: r.status, createdAt: r.created_at,
+            decided: r.decided || 0, lastAt: r.last_at || null
+        }))
+    });
 }
 
 /* ── Маршрутизация ──────────────────────────────────────────────────── */
@@ -452,6 +532,11 @@ export default {
                 });
             }
 
+            // GET /sessions?store=NNNN — поиск своей проверки по магазину
+            if (parts[0] === 'sessions' && M === 'GET') {
+                return listSessions(request, env, store);
+            }
+
             if (parts[0] !== 'session') return fail(404, 'Неизвестный путь.');
 
             // POST /session/create
@@ -473,6 +558,7 @@ export default {
             if (tail === 'results'    && M === 'GET')  return getResults(request, env, code, url);
             if (tail === 'results'    && M === 'POST') return postResults(request, env, code, store);
             if (tail === 'close'      && M === 'POST') return closeSession(request, env, code);
+            if (tail === 'reclaim'    && M === 'POST') return reclaimSession(request, env, code, store);
 
             if (tail === 'assignment' && M === 'GET') {
                 return getAssignment(env, code, store, Number(parts[3]));
@@ -488,5 +574,14 @@ export default {
         } catch (e) {
             return fail(500, 'Сбой на сервере: ' + e.message);
         }
+    },
+
+    /* Подчистка по расписанию (Cron Trigger в Cloudflare, таймер в
+       server/host/main.js). Раньше она висела только на создании смены:
+       пока новых проверок не заводят, брошенные не удалялись вовсе, а в
+       день с десятком запусков подряд — наоборот, срабатывала чаще, чем
+       нужно. Расписание отвязывает уборку от рабочей нагрузки. */
+    async scheduled(event, env, ctx) {
+        ctx.waitUntil(sweepStale(env, SWEEP_LIMIT_CRON).catch(e => console.warn('[sweep]', e)));
     }
 };

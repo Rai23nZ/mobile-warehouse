@@ -54,6 +54,45 @@ export function showRoleScreen(resumeInfo) {
     } else {
         box.classList.add('hidden');
     }
+    renderLeadBanner();
+}
+
+/* Баннер «вы ведёте проверку» — первое, что должен увидеть ведущий,
+   вернувшийся к погасшему устройству. Показываются только смены, право
+   на которые лежит здесь же: без токена кнопка вела бы в пустую сводку.
+   Смена, для которой токен потерян, открывается через «Открыть свою
+   проверку» по ключу ведущего. */
+function renderLeadBanner() {
+    const box = el['role-lead-boards'];
+    if (!box) return;
+    const mine = api.leadSessions().filter(s => api.loadLeadToken(s.code));
+    if (!mine.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+
+    box.innerHTML = `
+        <div class="flex items-center gap-2 text-indigo-800 mb-2">
+            <svg class="icon icon-24 text-indigo-500 flex-shrink-0" aria-hidden="true"><use href="#i-history"></use></svg>
+            <div class="font-bold text-sm">${mine.length > 1 ? 'Вы ведёте проверки' : 'Вы ведёте проверку'}</div>
+        </div>
+        ${mine.map(s => `
+            <button type="button" data-action="role-board" data-code="${escapeHtml(s.code)}"
+                    class="w-full text-left bg-white border border-indigo-200 rounded-xl p-3 mb-2 last:mb-0 hover:bg-indigo-50 transition active:scale-[0.98]">
+                <div class="font-mono font-black text-base text-slate-900">${escapeHtml(s.code)}</div>
+                <div class="text-[11px] text-slate-500">магазин ${escapeHtml(s.store)} · ${escapeHtml(s.network || '')}${
+                    s.savedAt ? ' · ' + new Date(s.savedAt).toLocaleString('ru-RU') : ''}</div>
+            </button>`).join('')}`;
+    box.classList.remove('hidden');
+}
+
+/* Открыть сводку по записи из реестра — без сети и без вопросов:
+   и код, и адрес, и токен уже на устройстве. */
+export function openBoardFromRegistry(code) {
+    const rec = api.leadSessionByCode(code);
+    if (!rec) { showToast('Запись о проверке не найдена'); return; }
+    if (!api.loadLeadToken(code)) { showToast('Токена на этом устройстве нет — откройте по ключу ведущего', 4000); return; }
+    showBoard(rec.code, {
+        store: rec.store, network: rec.network,
+        mode : rec.mode, leadName: rec.leadName, api: rec.api
+    });
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -354,6 +393,21 @@ export const boardContext = () => boardCtx;
 
 export function showBoard(code, meta) {
     boardCtx = { code, ...meta };
+
+    /* Сводка обязана пережить перезапуск приложения. До этой записи она
+       жила только в boardCtx — в памяти вкладки, — и выключение ноутбука
+       оставляло смену на сервере без владельца: результаты приходили,
+       а собрать отчёт и стереть данные было уже некому.
+
+       Адрес закрепляется здесь же: у каждого сервера своя база, и сводка
+       должна ходить ровно туда, где смена создана. */
+    if (meta.api) api.pinApi(meta.api);
+    boardCtx.api = api.getApiBase();
+    api.rememberLeadSession({
+        code, store: meta.store, network: meta.network,
+        mode : meta.mode, leadName: meta.leadName
+    });
+
     showScreen('board');
     setStatusBadge(defaultBadgeFor('board'));
 
@@ -394,7 +448,13 @@ function loadScript(src) {
 export async function refreshBoard() {
     if (!boardCtx) return;
     const token = api.loadLeadToken(boardCtx.code);
-    if (!token) { el['board-list'].innerHTML = '<p class="text-xs text-rose-600">Нет прав на эту проверку — токен утерян</p>'; return; }
+    if (!token) {
+        el['board-list'].innerHTML =
+            '<p class="text-xs text-rose-600">Нет прав на эту проверку: токена на этом устройстве нет. ' +
+            'Данные на сервере целы — вернитесь на стартовый экран, откройте «Открыть свою проверку» ' +
+            'и введите ключ ведущего.</p>';
+        return;
+    }
     try {
         const p = await api.getProgress(boardCtx.code, token);
         boardCtx.assignments = p.assignments;
@@ -424,6 +484,196 @@ export async function refreshBoard() {
         el['board-updated'].textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU');
     } catch (e) {
         el['board-updated'].textContent = 'не обновилось: ' + e.message;
+    }
+}
+
+/* Ключ доступа на диск: код, магазин, адрес сервера и токен одним файлом.
+
+   Единственный экземпляр токена в одном браузере — это и была причина
+   потери смены. Файл кладётся куда угодно (флешка, почта себе, чат) и
+   позволяет открыть сводку с любого устройства, даже если ноутбук больше
+   не включится. */
+export function saveAccessKey() {
+    if (!boardCtx) return null;
+    const token = api.loadLeadToken(boardCtx.code);
+    if (!token) throw new Error('Токена на этом устройстве нет — сохранять нечего');
+    return {
+        name: `ключ_${boardCtx.store}_${boardCtx.code}.json`,
+        text: JSON.stringify({
+            note    : 'Ключ доступа к проверке. Открывается через «Открыть свою проверку».',
+            code    : boardCtx.code,
+            store   : boardCtx.store,
+            network : boardCtx.network,
+            mode    : boardCtx.mode,
+            leadName: boardCtx.leadName,
+            api     : boardCtx.api || api.getApiBase(),
+            leadToken: token,
+            savedAt : new Date().toISOString()
+        }, null, 2)
+    };
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ОТКРЫТИЕ СВОЕЙ ПРОВЕРКИ ЗАНОВО
+
+   Экран существует ровно потому, что сводка ведущего раньше жила только
+   в памяти вкладки. Любая перезагрузка — севшая батарея, обновление
+   оболочки, вылет браузера — делала созданную проверку недостижимой,
+   хотя данные лежали на сервере, а право на них — в localStorage.
+   ══════════════════════════════════════════════════════════════════════ */
+
+export function showReopenScreen() {
+    showScreen('reopen');
+    setStatusBadge(defaultBadgeFor('reopen'));
+    el['reopen-store'].value = localStorage.getItem(LS_LAST_STORE) || '';
+    el['reopen-code'].value  = '';
+    el['reopen-key'].value   = localStorage.getItem(LS_LEAD_KEY) || '';
+    el['reopen-error'].classList.add('hidden');
+    el['reopen-status'].textContent = '';
+    el['reopen-remote'].innerHTML = '';
+    renderLocalBoards();
+}
+
+/* Проверки, право на которые лежит прямо здесь. Показываются только те,
+   для которых на устройстве есть токен: остальные открыть нечем. */
+function renderLocalBoards() {
+    const box = el['reopen-local'];
+    const mine = api.leadSessions().filter(s => api.loadLeadToken(s.code));
+    if (!mine.length) {
+        box.innerHTML = '<p class="text-[11px] text-slate-400">На этом устройстве сохранённых проверок нет</p>';
+        return;
+    }
+    box.innerHTML = mine.map(s => `
+        <button type="button" data-action="reopen-local" data-code="${escapeHtml(s.code)}"
+                class="w-full text-left border border-slate-200 rounded-xl p-2.5 hover:bg-slate-50 transition">
+            <div class="font-mono font-bold text-sm text-slate-900">${escapeHtml(s.code)}</div>
+            <div class="text-[11px] text-slate-500">магазин ${escapeHtml(s.store)} · ${escapeHtml(s.network || '')} ·
+                ${s.savedAt ? new Date(s.savedAt).toLocaleString('ru-RU') : ''}</div>
+        </button>`).join('');
+}
+
+/* Список проверок магазина с сервера — когда код забыт. Требует ключа
+   ведущего: перечислять чужие смены по одному номеру магазина нельзя. */
+export async function listStoreSessions() {
+    const store = el['reopen-store'].value.trim();
+    const key   = el['reopen-key'].value.trim();
+    const err   = el['reopen-error'];
+    err.classList.add('hidden');
+
+    if (!store) { showReopenError('Укажите номер магазина'); return; }
+    if (!key)   { showReopenError('Для поиска по магазину нужен ключ ведущего'); return; }
+
+    el['reopen-status'].textContent = 'Запрашиваю список…';
+    try {
+        const res = await api.listSessions(store, key);
+        localStorage.setItem(LS_LEAD_KEY, key);
+        localStorage.setItem(LS_LAST_STORE, store);
+        if (!res.sessions.length) {
+            el['reopen-status'].textContent = 'На этом сервере проверок по магазину нет';
+            el['reopen-remote'].innerHTML = '';
+            return;
+        }
+        el['reopen-status'].textContent = `Найдено: ${res.sessions.length} (сервер ${api.getApiBase().replace(/^https:\/\//, '')})`;
+        el['reopen-remote'].innerHTML = res.sessions.map(s => `
+            <button type="button" data-action="reopen-pick" data-code="${escapeHtml(s.code)}"
+                    class="w-full text-left border border-slate-200 rounded-xl p-2.5 hover:bg-slate-50 transition">
+                <div class="flex justify-between items-baseline gap-2">
+                    <span class="font-mono font-bold text-sm text-slate-900">${escapeHtml(s.code)}</span>
+                    <span class="text-[10px] uppercase font-bold ${s.status === 'active' ? 'text-emerald-600' : 'text-slate-400'}">${s.status === 'active' ? 'идёт' : 'закрыта'}</span>
+                </div>
+                <div class="text-[11px] text-slate-500">ведущий ${escapeHtml(s.leadName)} ·
+                    отметок ${s.decided} · создана ${new Date(s.createdAt).toLocaleString('ru-RU')}</div>
+            </button>`).join('');
+    } catch (e) {
+        el['reopen-status'].textContent = '';
+        showReopenError(e.message);
+    }
+}
+
+function showReopenError(msg) {
+    const err = el['reopen-error'];
+    err.textContent = msg;
+    err.classList.remove('hidden');
+}
+
+export function pickReopenCode(code) {
+    el['reopen-code'].value = code;
+    openOwnBoard();
+}
+
+/* QR смены годится и здесь: в нём тот же WH:<магазин>:<код> */
+export function applyScannedReopen(text) {
+    const m = /^WH:([^:]+):([A-Z0-9]{6})$/i.exec(String(text || '').trim());
+    if (!m) { showToast('Это не QR проверки'); return false; }
+    el['reopen-store'].value = m[1];
+    el['reopen-code'].value  = m[2].toUpperCase();
+    openOwnBoard();
+    return true;
+}
+
+/* Право на сводку берётся в трёх местах, по убыванию удобства:
+     1. токен уже лежит на устройстве — открываем сразу;
+     2. в реестре есть запись, но токена нет — меняем ключ ведущего на
+        токен через /reclaim;
+     3. устройство про смену ничего не знает — тоже /reclaim, только
+        сначала нужно найти, на каком сервере она живёт.
+   Если ключа нет и токена нет — честно говорим, что открыть нечем, а не
+   показываем пустую сводку без прав. */
+export async function openOwnBoard() {
+    const store = el['reopen-store'].value.trim();
+    const code  = el['reopen-code'].value.trim().toUpperCase();
+    const key   = el['reopen-key'].value.trim();
+    el['reopen-error'].classList.add('hidden');
+
+    if (!store || code.length !== 6) {
+        showReopenError('Укажите номер магазина и шестизначный код');
+        return;
+    }
+
+    const btn = el['reopen-open-btn'];
+    btn.disabled = true;
+    const restore = () => { btn.disabled = false; btn.textContent = 'Открыть сводку'; };
+
+    try {
+        /* Смена известна устройству — идём сразу на её сервер, не трогая
+           остальные: там её нет и быть не может. */
+        const known = api.leadSessionByCode(code);
+        if (known && known.api) api.pinApi(known.api);
+
+        btn.textContent = 'Поиск проверки…';
+        const found = known
+            ? { info: await api.getInfo(code, store), api: api.getApiBase() }
+            : await api.findSessionAnywhere(code, store);
+
+        let token = api.loadLeadToken(code);
+        if (!token) {
+            if (!key) {
+                showReopenError('Проверка найдена, но прав на неё на этом устройстве нет. ' +
+                                'Введите ключ ведущего — он вернёт доступ.');
+                return;
+            }
+            btn.textContent = 'Восстановление доступа…';
+            const res = await api.reclaimSession(code, store, key);
+            token = res.leadToken;
+            localStorage.setItem(LS_LEAD_KEY, key);
+            if (res.leadLabel) showToast(`Ключ принят: ${res.leadLabel}`, 2500);
+        }
+        if (!token) { showReopenError('Сервер не вернул токен'); return; }
+
+        localStorage.setItem(LS_LAST_STORE, store);
+        const info = found.info;
+        showBoard(code, {
+            store  : info.store,
+            network: info.network,
+            mode   : info.mode,
+            leadName: info.leadName,
+            api    : found.api
+        });
+        showToast('✅ Сводка восстановлена: ' + code, 3000);
+    } catch (e) {
+        showReopenError(e.message);
+    } finally {
+        restore();
     }
 }
 
@@ -462,8 +712,12 @@ export async function findSession() {
         return;
     }
     try {
-        const info = await api.getInfo(code, store);
-        join.info = { ...info, store, code };
+        /* Ищем по всем адресам, а не только по запомненному: ведущий мог
+           создать смену на другом сервере, и раньше это выглядело как
+           «Проверка не найдена» при совершенно исправном коде. */
+        const found = await api.findSessionAnywhere(code, store);
+        const info = found.info;
+        join.info = { ...info, store, code, api: found.api };
         localStorage.setItem(LS_LAST_STORE, store);
 
         el['join-session-info'].textContent =
@@ -505,6 +759,9 @@ export async function startJoined() {
         if (!pool.length) { showToast('В вашем наряде нет товаров', 4000); return; }
 
         localStorage.setItem(LS_CHECKER, a.checker);
+        /* Адрес сервера едет в сессии: после перезагрузки страницы наряд
+           поднимается из localStorage, и без него отправка могла бы уйти
+           на соседний сервер, где этой смены нет. */
         const session = {
             code   : join.info.code,
             store  : join.info.store,
@@ -513,9 +770,10 @@ export async function startJoined() {
             checker: a.checker,
             idx,
             isLead : !!a.isLead,
-            leadName: join.info.leadName
+            leadName: join.info.leadName,
+            api    : join.info.api || api.getApiBase()
         };
-        api.initQueue({ code: session.code, store: session.store, idx });
+        api.initQueue({ code: session.code, store: session.store, idx, api: session.api });
         await api.sendAssignmentState('in_progress', { startedAt: new Date().toISOString() });
         hooks.onPoolReady && hooks.onPoolReady(pool, session);
     } catch (e) {
@@ -546,9 +804,10 @@ export async function leadGoToOwnWork() {
         const session = {
             code: boardCtx.code, store: boardCtx.store, network: a.network,
             mode: a.mode, checker: a.checker, idx: own.idx, isLead: true,
-            leadName: boardCtx.leadName
+            leadName: boardCtx.leadName,
+            api : boardCtx.api || api.getApiBase()
         };
-        api.initQueue({ code: session.code, store: session.store, idx: own.idx });
+        api.initQueue({ code: session.code, store: session.store, idx: own.idx, api: session.api });
         await api.sendAssignmentState('in_progress', { startedAt: new Date().toISOString() });
         hooks.onPoolReady && hooks.onPoolReady(pool, session);
     } catch (e) {
@@ -664,6 +923,8 @@ export async function eraseSession() {
     if (!token) throw new Error('Токен утерян — стереть нельзя');
     await api.deleteSession(boardCtx.code, token);
     api.dropLeadToken(boardCtx.code);
+    api.forgetLeadSession(boardCtx.code);   // смены больше нет — и в реестре ей не место
+    api.unpinApi();
     boardCtx = null;
 }
 

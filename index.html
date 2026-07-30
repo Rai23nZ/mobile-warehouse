@@ -119,12 +119,22 @@
                 <div class="text-[11px] text-slate-500 mt-0.5">По коду от ведущего — файл загружать не нужно</div>
             </button>
 
+            <button type="button" data-action="role-reopen"
+                    class="w-full text-left bg-slate-100 text-slate-800 rounded-xl p-4 hover:bg-slate-200 transition active:scale-[0.98]">
+                <div class="font-bold text-sm">Открыть свою проверку</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Вернуться к сводке по коду — после перезагрузки или с другого устройства</div>
+            </button>
+
             <button type="button" data-action="role-solo"
                     class="w-full text-left bg-slate-50 text-slate-600 rounded-xl p-4 border border-slate-200 hover:bg-slate-100 transition active:scale-[0.98]">
                 <div class="font-bold text-sm">Работать со своим файлом</div>
                 <div class="text-[11px] text-slate-400 mt-0.5">Без ведущего и синхронизации, как раньше</div>
             </button>
         </div>
+
+        <!-- Проверки, которые ведёт это устройство. Заполняется из реестра
+             в sync.js; пусто — блок скрыт целиком. -->
+        <div id="role-lead-boards" class="hidden bg-indigo-50 border border-indigo-200 rounded-2xl p-4"></div>
 
         <div id="role-resume" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
             <div class="flex items-center gap-2 text-amber-800">
@@ -271,7 +281,88 @@
                 <svg class="icon icon-20" aria-hidden="true"><use href="#i-download"></use></svg>
                 Завершить и скачать отчёт
             </button>
+            <button type="button" data-action="board-savekey"
+                    class="w-full py-2.5 bg-white text-slate-600 font-bold rounded-xl border border-slate-200 hover:bg-slate-50 transition text-sm">
+                Сохранить ключ доступа
+            </button>
+            <p class="text-[10px] text-slate-400 text-center leading-relaxed">
+                Ключ открывает эту сводку с любого устройства. Сохраните его вне этого браузера —
+                тогда разряженный ноутбук не оставит смену без отчёта.
+            </p>
         </div>
+    </div>
+
+    <!-- ==== Экран 1г: открыть свою проверку заново ====
+         Существует потому, что сводка ведущего раньше жила только в памяти
+         вкладки: любая перезагрузка делала созданную проверку недостижимой,
+         хотя данные лежали на сервере. -->
+    <div id="screen-reopen" class="screen-scroll space-y-4 fade-in hidden">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+            <h2 class="text-lg font-bold text-slate-900">Открыть свою проверку</h2>
+            <p class="text-[11px] text-slate-500 leading-relaxed">
+                Проверка живёт на сервере независимо от устройства. Введите магазин и код —
+                сводка вернётся вместе с правом собрать отчёт.
+            </p>
+
+            <div class="flex gap-2">
+                <div class="flex-1 min-w-0">
+                    <label for="reopen-store" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Магазин</label>
+                    <input id="reopen-store" type="text" inputmode="numeric" autocomplete="off"
+                           class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 px-3 text-sm">
+                </div>
+                <div class="flex-1 min-w-0">
+                    <label for="reopen-code" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Код</label>
+                    <input id="reopen-code" type="text" maxlength="6" autocomplete="off"
+                           class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 px-3 text-sm font-mono uppercase tracking-widest">
+                </div>
+                <button type="button" data-action="reopen-scan" aria-label="Считать QR проверки"
+                        class="self-end p-2.5 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200 transition">
+                    <svg class="icon icon-20" aria-hidden="true"><use href="#i-scan"></use></svg>
+                </button>
+            </div>
+
+            <div>
+                <label for="reopen-key" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Ключ ведущего — если токена на этом устройстве нет
+                </label>
+                <input id="reopen-key" type="password" autocomplete="off"
+                       class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 px-3 text-sm">
+                <p class="text-[10px] text-slate-400 mt-1">
+                    Тот же ключ, что и при создании проверки. Нужен только при заходе с чужого
+                    или очищенного устройства.
+                </p>
+            </div>
+
+            <p id="reopen-error" class="hidden text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2"></p>
+
+            <button type="button" id="reopen-open-btn" data-action="reopen-open"
+                    class="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition active:scale-[0.98]">
+                Открыть сводку
+            </button>
+        </div>
+
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-2">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Сохранённые на этом устройстве</div>
+            <div id="reopen-local" class="space-y-2"></div>
+        </div>
+
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-2">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Код забыт</div>
+            <p class="text-[11px] text-slate-500">
+                Запросить у сервера список проверок магазина. Нужен ключ ведущего.
+            </p>
+            <button type="button" data-action="reopen-list"
+                    class="w-full py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition text-sm">
+                Показать проверки магазина
+            </button>
+            <p id="reopen-status" class="text-[10px] text-slate-400"></p>
+            <div id="reopen-remote" class="space-y-2"></div>
+        </div>
+
+        <button type="button" data-action="reopen-back"
+                class="w-full py-2.5 text-slate-500 font-bold text-sm hover:text-slate-700 transition">
+            ← Назад
+        </button>
     </div>
 
     <!-- ==== Экран 1д: присоединение ==== -->

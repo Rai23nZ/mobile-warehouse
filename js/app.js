@@ -13,7 +13,7 @@ import {
 } from './store.js';
 
 import {
-    enqueueZone, initQueue, onSyncState, refreshSyncState,
+    enqueueZone, initQueue, ensureQueue, onSyncState, refreshSyncState,
     flushQueue, resetQueue, sendAssignmentState
 } from './sync.js';
 import * as lead from './lead.js';
@@ -53,8 +53,11 @@ if ('serviceWorker' in navigator) {
         if (seen === ev.data.version) return;
         sessionStorage.setItem('wh_sw_reloaded', ev.data.version);
 
-        /* Посреди проверки не дёргаем: сначала дописываем несохранённое */
-        if (getScreen() === 'work') {
+        /* Посреди проверки не дёргаем: сначала дописываем несохранённое.
+           Сводка ведущего в этом списке не по инерции: на ней открыт QR,
+           по которому в этот момент подключаются люди, и перезагрузка
+           посреди подключения смены выглядит как её пропажа. */
+        if (getScreen() === 'work' || getScreen() === 'board') {
             flushSave();
             showToast('Установлено обновление. Перезагрузите приложение, когда будет удобно.', 8000);
             return;
@@ -167,6 +170,23 @@ function paintSyncBadge(s) {
 function goToWorkScreen() {
     showScreen('work');
     setStatusBadge(isStorageBroken() ? 'НЕ СОХРАНЯЕТСЯ' : defaultBadgeFor('work'), isStorageBroken());
+
+    /* Очередь отправки поднимается ЗДЕСЬ, а не только при входе по коду.
+       Вход в наряд — не единственный способ оказаться на рабочем экране:
+       сессия восстанавливается из localStorage после перезагрузки и
+       загружается снимком из файла. На этих двух путях очередь оставалась
+       без контекста, enqueueZone молча выходил на первой строке, отметки
+       никуда не уходили — а индикатор показывал «отправлено», потому что
+       очередь и правда была пуста. Вызов идемпотентен: если наряд уже
+       открыт, ensureQueue ничего не трогает. */
+    if (inSession()) {
+        ensureQueue({
+            code : store.session.code,
+            store: store.session.store,
+            idx  : store.session.idx,
+            api  : store.session.api        // у сессий прежних версий его нет — останется текущий адрес
+        });
+    }
     /* Индикатор перерисовывается по событиям очереди, а при переходе между
        режимами их не бывает: без этого он оставался бы висеть от прошлой
        проверки при работе со своим файлом. */
@@ -977,6 +997,19 @@ const ACTIONS = {
     'role-join'   : () => lead.showJoinScreen(),
     'role-solo'   : goToOwnFileScreen,
     'role-resume' : () => restoreSession(),
+    'role-reopen' : () => lead.showReopenScreen(),
+    'role-board'  : node => lead.openBoardFromRegistry(node.dataset.code),
+
+    // открытие своей проверки заново
+    'reopen-back' : () => lead.showRoleScreen(resumeLabel()),
+    'reopen-open' : () => lead.openOwnBoard(),
+    'reopen-list' : () => lead.listStoreSessions(),
+    'reopen-local': node => lead.openBoardFromRegistry(node.dataset.code),
+    'reopen-pick' : node => lead.pickReopenCode(node.dataset.code),
+    'reopen-scan' : async () => {
+        const code = await scanBarcode(SCAN_TYPE_QR);
+        if (code) lead.applyScannedReopen(code);
+    },
 
     // создание проверки
     'lead-add'    : () => lead.addChecker(),
@@ -989,6 +1022,7 @@ const ACTIONS = {
     'board-refresh': () => lead.refreshBoard(),
     'board-mywork' : () => lead.leadGoToOwnWork(),
     'board-finish' : finishAndErase,
+    'board-savekey': saveAccessKey,
 
     // присоединение
     'join-find' : () => lead.findSession(),
@@ -1103,6 +1137,20 @@ async function finishAndErase() {
         lead.showRoleScreen(null);
     } catch (e) {
         showToast('Не удалось завершить: ' + e.message, 6000);
+    }
+}
+
+/* Ключ доступа к смене на диск. Пока токен существует в единственном
+   экземпляре в одном браузере, смена держится на исправности одного
+   устройства — файл снимает эту зависимость. */
+function saveAccessKey() {
+    try {
+        const key = lead.saveAccessKey();
+        if (!key) return;
+        downloadBlob(key.text, 'application/json', key.name);
+        showToast('🔑 Ключ доступа сохранён. Держите его вне этого устройства', 5000);
+    } catch (e) {
+        showToast('Не удалось сохранить ключ: ' + e.message, 5000);
     }
 }
 
