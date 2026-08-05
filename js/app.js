@@ -25,6 +25,7 @@ import {
 import { REASONS, reasonLabel, reasonNeedsScan, NO_ARTICLE } from './reasons.js';
 import { loadForNetwork, findByBarcode, normalizeBarcode, catalogSize } from './catalog.js';
 import { scanBarcode, SCAN_TYPE_QR, cancelScan, toggleTorch, isScannerOpen } from './scanner.js';
+import { imgUrl, emptyUrl, prepareImages, cancelWarm } from './images.js';
 
 import {
     el, cacheDom, showScreen, getScreen, defaultBadgeFor, setStatusBadge,
@@ -111,6 +112,7 @@ function goHome(skipConfirm = false) {
         !confirm('Вернуться на стартовый экран? Текущий прогресс проверки будет сохранён.')) return;
     flushSave();
     if (inSession()) flushQueue();
+    cancelWarm();          // очередь прогрева ничего не знает о том, что наряд закрыт
 
     const board = lead.boardContext();
     if (board) { lead.showBoard(board.code, board); return; }
@@ -193,7 +195,14 @@ function goToWorkScreen() {
     refreshSyncState();
     renderProduct();
     prepareCatalog();       // справочник ШК нужен и после восстановления сессии
-    
+
+    /* Фотографии выборки — заранее и на ЛЮБОМ входе сюда: по наряду с
+       сервера, из своего файла, при восстановлении сессии и из снимка.
+       Раньше прогрев висел на одном сценарии из четырёх, и проверяющий,
+       зашедший по коду смены, оставался в зале без фото. Здесь же
+       сверяется ревизия снимков — переснятые обновляются. */
+    prepareImages(msg => showToast(msg, 3000));
+
     // ОБНОВЛЕНИЕ: Переключаем видимость кнопок экспорта/завершения в футере
     const isSync = inSession();
     const btnFooterExport = document.getElementById('btn-footer-export');
@@ -364,8 +373,7 @@ function startVerification() {
 
     setOrder(list.map(p => p.tovar));
     autoSave();
-    goToWorkScreen();
-    preloadImages(store.order);
+    goToWorkScreen();          // прогрев фото запускается там — на всех входах сразу
 }
 
 /* Справочник грузится в фоне: он нужен только при первом расхождении,
@@ -377,32 +385,8 @@ async function prepareCatalog() {
     else if (!res.ok) console.warn('[catalog]', res.reason);
 }
 
-/* ── Изображения ──────────────────────────────────────────────────── */
-const ASSET_VERSION = '25_07_2026';
-const imgUrl   = tovar => `img/${store.network}/${tovar}.jpg?v=${ASSET_VERSION}`;
-const emptyUrl = ()    => `img/empty.jpg?v=${ASSET_VERSION}`;
-
-/* Предзагрузка теперь идёт по тому же URL, что и рендер (раньше отличалась
-   на `?v=`, из-за чего каждая картинка качалась дважды), и с ограничением
-   параллелизма — иначе тысячи одновременных запросов забивают канал ровно
-   в тот момент, когда пользователь начинает работать. */
-async function preloadImages(keys, concurrency = 6) {
-    new Image().src = emptyUrl();
-    const queue = [...keys];
-    if (!queue.length) return;
-    showToast('⏳ Оптимизация медиа…');
-    const worker = async () => {
-        while (queue.length) {
-            const key = queue.shift();
-            await new Promise(done => {
-                const im = new Image();
-                im.onload = im.onerror = done;
-                im.src = imgUrl(key);
-            });
-        }
-    };
-    await Promise.all(Array.from({ length: concurrency }, worker));
-}
+/* Адреса фотографий, прогрев кэша и точечное обновление снимков живут
+   в js/images.js — см. imgUrl/emptyUrl/prepareImages в импортах. */
 
 /* ══════════════════════════════════════════════════════════════════════
    РЕНДЕР
