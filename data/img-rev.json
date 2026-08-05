@@ -1,7 +1,7 @@
 {
   "_readme": "Собирается tools/img-rev.py. Правка руками не нужна: rev — номер ревизии фото сети, changed — артикулы, чьи снимки заменили, и ревизия замены; base — самая ранняя ревизия, ещё представленная в changed.",
-  "commit": "6809cdb7a08f360e985edb834504a79aa1a11ca3",
-  "generated": "2026-08-05T16:18:08Z",
+  "commit": "ddf6ddcaa3ffa02c8b6618c6c882331e6ebe3444",
+  "generated": "2026-08-05T16:44:14Z",
   "networks": {
     "Demix": {
       "rev": 1,
@@ -19,8 +19,8 @@
       "changed": {}
     },
     "Sportmaster": {
-      "rev": 1,
-      "base": 1,
+      "rev": 2,
+      "base": 3,
       "changed": {}
     }
   }
